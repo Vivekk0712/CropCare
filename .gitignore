@@ -1,0 +1,36 @@
+# Node.js / Next.js
+/frontend/node_modules
+/frontend/.next
+/frontend/.vercel
+/frontend/build
+/frontend/out
+/frontend/.env.local
+/frontend/.env.development.local
+/frontend/.env.test.local
+/frontend/.env.production.local
+/frontend/npm-debug.log*
+/frontend/yarn-debug.log*
+/frontend/yarn-error.log*
+/frontend/.pnpm-debug.log*
+
+# Python / Flask
+/backend/__pycache__/
+/backend/venv/
+/backend/*.py[cod]
+/backend/*$py.class
+/backend/.env
+/backend/.python-version
+/backend/*.so
+/backend/.pytest_cache/
+/backend/htmlcov/
+/backend/.coverage
+
+# IDE Files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS Files
+.DS_Store
+Thumbs.db

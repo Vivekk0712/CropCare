@@ -1,0 +1,6 @@
+0000000000000000000000000000000000000000 da1cd52cf358f62a5f70117662a84c24c268e040 Vivekk0712 <vivekkashyap0712@gmail.com> 1744385831 +0530	commit (initial): first commit
+da1cd52cf358f62a5f70117662a84c24c268e040 da1cd52cf358f62a5f70117662a84c24c268e040 Vivekk0712 <vivekkashyap0712@gmail.com> 1744385854 +0530	Branch: renamed refs/heads/master to refs/heads/main
+da1cd52cf358f62a5f70117662a84c24c268e040 7dc0d8feb92e38ac7133602e8494dee64b5d7954 Vivekk0712 <vivekkashyap0712@gmail.com> 1744386258 +0530	commit: [Ogit add . && git commit -m "Updated project and synced with GitHub" &&
+7dc0d8feb92e38ac7133602e8494dee64b5d7954 6e3be7cb4bf44ae20f2caae52073c0a6a2519d08 Vivekk0712 <vivekkashyap0712@gmail.com> 1744386936 +0530	commit: Update .gitignore to ignore node_modules
+6e3be7cb4bf44ae20f2caae52073c0a6a2519d08 85c60935d87470332c9fa4abc2d14f7ed5a9fc6f Vivekk0712 <vivekkashyap0712@gmail.com> 1744387046 +0530	commit: structure with Clarifai integration"d: frontend/node_modules/.bin/loose-envify.ps1
+85c60935d87470332c9fa4abc2d14f7ed5a9fc6f 35f78cd8d6b8ae2f1de9b3fbe6511f4f48a785e7 Vivekk0712 <vivekkashyap0712@gmail.com> 1744387656 +0530	commit: Add .gitignore and update README
