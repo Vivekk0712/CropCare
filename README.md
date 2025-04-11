@@ -1,75 +1,43 @@
-# CropVision - Plant Disease Detection
+# Crop Disease Detection Application
 
-This project integrates the Clarifai API with a Next.js frontend and Flask backend to detect plant diseases from images. Users can upload plant images, which are analyzed by a machine learning model through the Clarifai API, with results stored in Supabase.
+This application detects crop diseases from images and provides information and remedies through an AI-powered chatbot.
 
-## Project Structure
+## Features
 
-```
-.
-├── backend/             # Flask backend
-│   ├── app.py           # Main Flask application
-│   ├── .env             # Environment variables (add your API key here)
-│   └── requirements.txt # Python dependencies
-└── frontend/            # Next.js frontend
-    ├── pages/           # Next.js pages
-    │   ├── index.js     # Main page with image upload and results
-    │   ├── history.js   # History page showing past predictions
-    │   └── _app.js      # App wrapper with global styles
-    ├── styles/          # CSS styles
-    │   └── globals.css  # Global CSS styles
-    └── package.json     # Node.js dependencies
-```
+- Plant disease detection using Clarifai AI
+- Interactive chatbot for disease information
+- Multilingual support
+- Text-to-speech capabilities
+- History tracking of predictions
 
-## Setup Instructions
+## Setup
 
-### Backend Setup
+### Backend
 
 1. Navigate to the backend directory:
    ```
    cd backend
    ```
 
-2. Create a virtual environment (optional but recommended):
-   ```
-   python -m venv venv
-   ```
-
-3. Activate the virtual environment:
-   - Windows:
-     ```
-     venv\Scripts\activate
-     ```
-   - macOS/Linux:
-     ```
-     source venv/bin/activate
-     ```
-
-4. Install dependencies:
+2. Install dependencies:
    ```
    pip install -r requirements.txt
    ```
 
-5. Set up your environment variables in the `.env` file:
-   - `CLARIFAI_PAT`: Your Clarifai Personal Access Token
-   - `SUPABASE_URL`: Your Supabase project URL
-   - `SUPABASE_KEY`: Your Supabase anon key
+3. Set up environment variables by creating a `.env` file with:
+   ```
+   CLARIFAI_PAT=your_clarifai_pat
+   SUPABASE_URL=your_supabase_url
+   SUPABASE_KEY=your_supabase_key
+   GOOGLE_API_KEY=your_google_api_key  # Optional, for text-to-speech
+   ```
 
-6. Create a "predictions" table in your Supabase dashboard with these columns:
-   - id (uuid, primary key)
-   - user_id (text)
-   - image_name (text)
-   - image_data (text)
-   - prediction (text)
-   - confidence (float)
-   - created_at (timestamp with time zone)
-
-7. Start the Flask server:
+4. Run the backend server:
    ```
    python app.py
    ```
-   The server will run on `http://localhost:5000`
 
-### Frontend Setup
+### Frontend
 
 1. Navigate to the frontend directory:
    ```
@@ -81,22 +49,20 @@ This project integrates the Clarifai API with a Next.js frontend and Flask backe
    npm install
    ```
 
-3. Start the development server:
+3. Run the development server:
    ```
    npm run dev
    ```
-   The frontend will run on `http://localhost:3000`
 
-## Features
+4. Access the application at `http://localhost:3000`
 
-- Upload plant images for disease detection
-- View prediction results with confidence scores
-- Store prediction history in Supabase database
-- View historical predictions and analysis results
+## API Endpoints
 
-## Customization
+- `/predict` - Upload an image for disease detection
+- `/history` - Get prediction history
+- `/chatbot` - Interact with the AI chatbot
 
-To use a different Clarifai model:
-1. Open `backend/app.py`
-2. Change the `USER_ID`, `APP_ID`, `MODEL_ID`, and `MODEL_VERSION_ID` variables to match your desired model
-3. Adjust the response processing if needed for different model outputs
+## Technologies
+
+- Backend: Flask, Clarifai API, NLTK, Google Cloud Text-to-Speech
+- Frontend: Next.js, React, Tailwind CSS

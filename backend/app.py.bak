@@ -18,7 +18,6 @@ from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
 import nltk
 import requests
-import time
 
 # Download NLTK resources
 try:
@@ -35,7 +34,6 @@ try:
     TEXT_TO_SPEECH_AVAILABLE = True
 except ImportError:
     print("Google Cloud Text-to-Speech not available. Chat responses will not have audio.")
-    print("To enable text-to-speech functionality, install the package with: pip install google-cloud-texttospeech")
     TEXT_TO_SPEECH_AVAILABLE = False
 
 # Load environment variables from .env file
@@ -47,13 +45,8 @@ CORS(app)  # Enable CORS for cross-origin requests from frontend
 # Configure Clarifai API credentials
 CLARIFAI_PAT = os.environ.get("CLARIFAI_PAT")
 if not CLARIFAI_PAT:
-    print("WARNING: CLARIFAI_PAT environment variable is not set or is empty")
-    print("Image analysis functionality will not work correctly")
+    print("CLARIFAI_PAT environment variable is not set")
     CLARIFAI_PAT = "default_pat"  # Set a default to avoid errors, will be rejected by API
-
-# Log PAT information for debugging (safely)
-pat_prefix = CLARIFAI_PAT[:5] + "..." if len(CLARIFAI_PAT) > 10 else "Invalid PAT"
-print(f"Using Clarifai PAT with prefix: {pat_prefix}")
 
 # Configure Supabase
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
@@ -80,178 +73,31 @@ MODEL_VERSION_ID = '8063e28392ff49dc9167993ce6f55b19'
 # In-memory fallback for storing predictions when Supabase is not available
 in_memory_predictions = {}
 
-# Disease treatment information
-def get_treatment_for_disease(disease_name):
-    """Get treatment information for a detected disease"""
-    treatments = {
-        "Apple___Apple_scab": "Apply fungicide, remove infected leaves, improve air circulation around trees.",
-        "Apple___Black_rot": "Prune infected branches, apply appropriate fungicides, remove mummified fruits.",
-        "Apple___Cedar_apple_rust": "Remove nearby cedar trees if possible, apply fungicides preventively.",
-        "Apple___healthy": "Continue good agricultural practices to maintain health.",
-        "Blueberry___healthy": "Continue good agricultural practices to maintain health.",
-        "Cherry___healthy": "Continue good agricultural practices to maintain health.",
-        "Cherry___Powdery_mildew": "Apply sulfur-based fungicides, ensure proper spacing for air circulation.",
-        "Corn___Cercospora_leaf_spot": "Rotate crops, apply appropriate fungicides, remove crop debris.",
-        "Corn___Common_rust": "Apply fungicides, plant resistant varieties, avoid overhead irrigation.",
-        "Corn___healthy": "Continue good agricultural practices to maintain health.",
-        "Corn___Northern_Leaf_Blight": "Apply fungicides, crop rotation, till under crop debris after harvest.",
-        "Grape___Black_rot": "Apply fungicides, prune infected areas, improve air flow in the canopy.",
-        "Grape___Esca": "Prune during dry weather, apply wound protectants, remove infected vines.",
-        "Grape___healthy": "Continue good agricultural practices to maintain health.",
-        "Grape___Leaf_blight": "Apply fungicides, proper canopy management, sanitize equipment.",
-        "Orange___Haunglongbing": "Remove infected trees, control psyllid vectors, use disease-free nursery stock.",
-        "Peach___Bacterial_spot": "Apply copper-based sprays, prune during dry weather, avoid overhead irrigation.",
-        "Peach___healthy": "Continue good agricultural practices to maintain health.",
-        "Pepper___Bacterial_spot": "Rotate crops, use copper-based fungicides, avoid working with wet plants.",
-        "Pepper___healthy": "Continue good agricultural practices to maintain health.",
-        "Potato___Early_blight": "Apply fungicides, ensure proper spacing, avoid overhead irrigation.",
-        "Potato___healthy": "Continue good agricultural practices to maintain health.",
-        "Potato___Late_blight": "Apply fungicides, destroy infected plants, harvest during dry weather.",
-        "Squash___Powdery_mildew": "Apply fungicides, space plants for good air circulation, water at base.",
-        "Strawberry___healthy": "Continue good agricultural practices to maintain health.",
-        "Strawberry___Leaf_scorch": "Remove infected leaves, apply fungicides, provide adequate spacing.",
-        "Tomato___Bacterial_spot": "Rotate crops, use copper-based sprays, avoid overhead irrigation.",
-        "Tomato___Early_blight": "Apply fungicides, remove lower infected leaves, mulch around plants.",
-        "Tomato___healthy": "Continue good agricultural practices to maintain health.",
-        "Tomato___Late_blight": "Apply fungicides, remove infected plants, ensure proper spacing.",
-        "Tomato___Leaf_Mold": "Improve air circulation, reduce humidity, apply fungicides.",
-        "Tomato___Septoria_leaf_spot": "Apply fungicides, avoid watering leaves, practice crop rotation.",
-        "Tomato___Spider_mites": "Apply miticides, increase humidity, introduce predatory mites.",
-        "Tomato___Target_Spot": "Apply fungicides, practice crop rotation, avoid overhead irrigation.",
-        "Tomato___Mosaic_virus": "Remove and destroy infected plants, control aphids, disinfect tools."
-    }
-    
-    return treatments.get(disease_name, "No specific treatment information available for this disease. Consult a local agricultural extension office.")
-
 # Translation function
 def translate_text(text, target_language):
     """
     Translate text using a publicly available API
     If the API call fails, the original text is returned
     """
-    # Extract language code from the full language tag
-    lang_code = target_language.split('-')[0]
-    
-    # Add debug output
-    print(f"*** Translation requested for text to language: {lang_code} (from {target_language}) ***")
-    
-    # If language is English, return the original text
-    if lang_code == 'en':
-        print("*** Target language is English, skipping translation ***")
-        return text
-        
-    # Caching mechanism for translations
-    cache_key = f"{text}_{lang_code}"
-    # Create a translations cache if it doesn't exist
-    if not hasattr(translate_text, 'cache'):
-        translate_text.cache = {}
-        
-    # Return cached translation if available
-    if cache_key in translate_text.cache:
-        print(f"*** Using cached translation for: {cache_key[:30]}... ***")
-        return translate_text.cache[cache_key]
-    
     try:
-        print(f"*** Attempting translation to {lang_code} ***")
-        # First try Google API if available (faster and more reliable)
-        api_key = os.environ.get("GOOGLE_API_KEY")
-        print(f"*** Google API key available: {api_key is not None} ***")
+        # Using LibreTranslate API (no API key required for some instances)
+        url = "https://translate.argosopentech.com/translate"
+        payload = {
+            "q": text,
+            "source": "en",
+            "target": target_language.split('-')[0]  # Extract language code
+        }
+        headers = {"Content-Type": "application/json"}
+        response = requests.post(url, json=payload, headers=headers)
         
-        if api_key:
-            try:
-                url = f"https://translation.googleapis.com/language/translate/v2?key={api_key}"
-                payload = {
-                    "q": text,
-                    "source": "en",
-                    "target": lang_code,
-                    "format": "text"
-                }
-                headers = {"Content-Type": "application/json"}
-                print(f"*** Making request to Google Translate API for {lang_code} ***")
-                response = requests.post(url, json=payload, headers=headers, timeout=5)
-                
-                print(f"*** Google Translate API response status: {response.status_code} ***")
-                if response.status_code == 200:
-                    data = response.json()
-                    print(f"*** Google Translate API response: {json.dumps(data)[:100]}... ***")
-                    if 'data' in data and 'translations' in data['data'] and len(data['data']['translations']) > 0:
-                        translated_text = data['data']['translations'][0]['translatedText']
-                        # Cache the translation
-                        translate_text.cache[cache_key] = translated_text
-                        print(f"*** Successfully translated with Google API to {lang_code} ***")
-                        return translated_text
-                    else:
-                        print(f"*** Unexpected Google Translate API response structure: {data} ***")
-                else:
-                    print(f"*** Google Translate API error: {response.status_code} - {response.text} ***")
-            except Exception as e:
-                print(f"*** Error using Google Translate API: {str(e)} ***")
-        
-        # Fallback to multiple free translation services
-        try:
-            # First try LibreTranslate
-            print(f"*** Falling back to LibreTranslate for {lang_code} ***")
-            libre_url = "https://translate.argosopentech.com/translate"
-            libre_payload = {
-                "q": text,
-                "source": "en",
-                "target": lang_code
-            }
-            libre_headers = {"Content-Type": "application/json"}
-            libre_response = requests.post(libre_url, json=libre_payload, headers=libre_headers, timeout=10)
-            
-            print(f"*** LibreTranslate API response status: {libre_response.status_code} ***")
-            if libre_response.status_code == 200:
-                libre_result = libre_response.json()
-                translated_text = libre_result.get("translatedText", text)
-                # Cache the translation
-                translate_text.cache[cache_key] = translated_text
-                print(f"*** Successfully translated with LibreTranslate to {lang_code} ***")
-                return translated_text
-            else:
-                print(f"*** LibreTranslate API error: {libre_response.status_code} - {libre_response.text} ***")
-                
-            # Second fallback - try Lingva Translate (alternative free service)
-            print(f"*** Trying Lingva Translate for {lang_code} ***")
-            lingva_url = f"https://lingva.ml/api/v1/en/{lang_code}/{text}"
-            lingva_response = requests.get(lingva_url, timeout=10)
-            
-            if lingva_response.status_code == 200:
-                lingva_data = lingva_response.json()
-                if 'translation' in lingva_data:
-                    translated_text = lingva_data['translation']
-                    # Cache the translation
-                    translate_text.cache[cache_key] = translated_text
-                    print(f"*** Successfully translated with Lingva to {lang_code} ***")
-                    return translated_text
-            
-            # All translation services failed, use a basic dictionary for common languages and terms
-            print("*** All translation services failed, using basic dictionary ***")
-            if lang_code == 'hi':  # Hindi
-                basic_translations = {
-                    "Hello!": "नमस्ते!",
-                    "How can I help you": "मैं आपकी कैसे मदद कर सकता हूँ",
-                    "plant": "पौधा",
-                    "disease": "रोग",
-                    "treatment": "उपचार",
-                    "prevention": "रोकथाम",
-                    "symptoms": "लक्षण"
-                }
-                # Apply simple replacements
-                translated_text = text
-                for en, hi in basic_translations.items():
-                    translated_text = translated_text.replace(en, hi)
-                if translated_text != text:
-                    # Some translations were applied
-                    translate_text.cache[cache_key] = translated_text
-                    return translated_text
-        
-        except Exception as e:
-            print(f"*** Error in translation fallbacks: {str(e)} ***")
-        
-        return text
+        if response.status_code == 200:
+            translated_text = response.json().get("translatedText", text)
+            return translated_text
+        else:
+            print(f"Translation API error: {response.status_code}")
+            return text
     except Exception as e:
-        print(f"*** Translation error: {str(e)} ***")
+        print(f"Translation error: {str(e)}")
         return text
 
 # NLP preprocessing function
@@ -308,13 +154,9 @@ def predict():
     user_data_object = resources_pb2.UserAppIDSet(user_id=USER_ID, app_id=APP_ID)
     
     try:
-        # Print request details for debugging
-        print(f"Making Clarifai API request with:")
-        print(f"- PAT prefix: {CLARIFAI_PAT[:5]}...")
-        print(f"- USER_ID: {USER_ID}")
-        print(f"- APP_ID: {APP_ID}")
-        print(f"- MODEL_ID: {MODEL_ID}")
-        print(f"- MODEL_VERSION_ID: {MODEL_VERSION_ID}")
+        # Print PAT prefix for debugging (don't print the full PAT for security)
+        pat_prefix = CLARIFAI_PAT[:5] + "..." if len(CLARIFAI_PAT) > 10 else "Invalid PAT"
+        print(f"Using PAT prefix: {pat_prefix}")
         
         # Create the request object
         request_object = service_pb2.PostModelOutputsRequest(
@@ -332,6 +174,8 @@ def predict():
             ]
         )
         
+        print(f"Sending request to Clarifai API: USER_ID={USER_ID}, APP_ID={APP_ID}, MODEL_ID={MODEL_ID}")
+        
         # Call the Clarifai API
         print("Calling Clarifai API...")
         response = stub.PostModelOutputs(request_object, metadata=metadata)
@@ -344,19 +188,8 @@ def predict():
                 "details": response.status.details
             }
             print(f"Clarifai API error: {error_details}")
-            
-            # More detailed error handling
-            error_message = response.status.description
-            if "Invalid API key" in error_message or "authorization" in error_message.lower():
-                print("Authentication error with Clarifai API. Check your PAT in the .env file.")
-                return jsonify({
-                    "success": False,
-                    "error": f"Clarifai API authentication failed: {error_message}. Please check your API credentials."
-                }), 401
-            
             return jsonify({
-                "success": False,
-                "error": f"Clarifai API request failed: {error_message}"
+                "error": f"Clarifai API request failed: {response.status.description}"
             }), 500
         
         # Process the response
@@ -394,19 +227,7 @@ def predict():
         # Try to store in Supabase if available
         if supabase:
             try:
-                print(f"Attempting to store prediction in Supabase for user {user_id}")
                 prediction_data = {
-                    "id": prediction_id,
-                    "user_id": user_id,
-                    "image_name": filename,
-                    "image_data": image_base64[:100] + "...", # Truncated for logging
-                    "prediction": highest_prediction["name"],
-                    "confidence": highest_prediction["value"],
-                    "created_at": timestamp
-                }
-                
-                print(f"Prediction data prepared, inserting into Supabase table 'predictions'")
-                result = supabase.table("predictions").insert({
                     "id": prediction_id,
                     "user_id": user_id,
                     "image_name": filename,
@@ -414,31 +235,17 @@ def predict():
                     "prediction": highest_prediction["name"],
                     "confidence": highest_prediction["value"],
                     "created_at": timestamp
-                }).execute()
+                }
                 
-                print(f"Successfully stored prediction in Supabase. Result: {result}")
+                result = supabase.table("predictions").insert(prediction_data).execute()
+                print(f"Successfully stored prediction in Supabase for user {user_id}")
             except Exception as e:
-                error_traceback = traceback.format_exc()
                 print(f"Error storing prediction in Supabase: {str(e)}")
-                print(f"Error traceback: {error_traceback}")
-        else:
-            print("Supabase client not available, storing prediction in memory only")
         
-        # Store in-memory prediction for response
-        response_prediction = {
-            "id": prediction_id,
-            "name": highest_prediction["name"],
-            "value": highest_prediction["value"],
-            "details": highest_prediction.get("details", ""),
-            "treatment": get_treatment_for_disease(highest_prediction["name"]),
-            "created_at": timestamp,
-            "all_predictions": outputs
-        }
-        
-        # Return the prediction result
+        # Return the prediction
         return jsonify({
             "success": True,
-            "prediction": response_prediction
+            "prediction": highest_prediction
         })
         
     except Exception as e:
@@ -463,7 +270,6 @@ def history():
         supabase_predictions = []
         if supabase:
             try:
-                print(f"Attempting to fetch predictions from Supabase for user {user_id}")
                 result = supabase.table("predictions") \
                         .select("id, user_id, image_name, prediction, confidence, created_at") \
                         .eq("user_id", user_id) \
@@ -472,19 +278,11 @@ def history():
                 
                 if hasattr(result, 'data'):
                     supabase_predictions = result.data
-                    print(f"Successfully fetched {len(supabase_predictions)} predictions from Supabase")
-                else:
-                    print("Supabase query returned no data attribute")
             except Exception as e:
-                error_traceback = traceback.format_exc()
                 print(f"Error fetching from Supabase: {str(e)}")
-                print(f"Error traceback: {error_traceback}")
-        else:
-            print("Supabase client not available, using in-memory predictions only")
         
         # Get from memory
         memory_predictions = in_memory_predictions.get(user_id, [])
-        print(f"Found {len(memory_predictions)} predictions in memory")
         
         # Combine and sort predictions
         combined_predictions = supabase_predictions + memory_predictions
@@ -494,8 +292,6 @@ def history():
             reverse=True
         )
         
-        print(f"Returning {len(sorted_predictions)} total predictions")
-        
         return jsonify({
             "success": True,
             "predictions": sorted_predictions
@@ -503,9 +299,8 @@ def history():
         
     except Exception as e:
         error_message = str(e)
-        error_traceback = traceback.format_exc()
         print(f"Error fetching prediction history: {error_message}")
-        print(f"Error traceback: {error_traceback}")
+        print(f"Error traceback: {traceback.format_exc()}")
         return jsonify({
             "success": False,
             "error": f"Error fetching prediction history: {error_message}",
@@ -594,21 +389,9 @@ def process_message(message, language_code='en-US'):
     Process a message and return a response based on pattern matching and NLP.
     Supports multiple languages through translation.
     """
-    print(f"------ Processing message in {language_code} ------")
     original_message = message
-    
-    # Check if language is English
+    # Convert to English for processing if not already in English
     is_english = language_code.startswith('en')
-    print(f"Is English language: {is_english}")
-    
-    # Translate non-English input to English for processing
-    if not is_english:
-        try:
-            # Translation not needed for input in most cases as we process based on keywords
-            # but we'll log that we received a non-English message
-            print(f"Received non-English message in language {language_code}")
-        except Exception as e:
-            print(f"Error handling non-English input: {str(e)}")
     
     processed_message = preprocess_text(message.lower())
     
@@ -637,7 +420,6 @@ def process_message(message, language_code='en-US'):
     for name, key in disease_names:
         if name.lower() in processed_message:
             identified_disease = key
-            print(f"Identified disease: {key}")
             break
     
     # Check for intents in the message
@@ -652,9 +434,6 @@ def process_message(message, language_code='en-US'):
         intent = "treatment"
     elif any(word in processed_message for word in ["prevent", "avoid", "stop", "protect"]):
         intent = "prevention"
-    
-    if intent:
-        print(f"Identified intent: {intent}")
     
     # Generate response based on intent and identified disease
     response = None
@@ -719,21 +498,10 @@ def process_message(message, language_code='en-US'):
                    "'late blight', or 'powdery mildew', as well as prevention methods, or treatment options. "
                    "What would you like to know about crop care?")
     
-    print(f"Generated English response: {response[:100]}...")
-    
     # Translate response if not in English
     if not is_english:
-        print(f"Translating response to {language_code}...")
-        original_response = response
         response = translate_text(response, language_code)
-        
-        # Verify if translation worked (simple check if the text changed)
-        if response == original_response:
-            print("WARNING: Translation may not have worked. Response unchanged.")
-        else:
-            print(f"Translated response: {response[:100]}...")
     
-    print(f"------ Message processing completed ------")
     return response
 
 # Chatbot API endpoint
@@ -744,77 +512,24 @@ def process_chatbot():
         user_message = data.get('message', '')
         language_code = data.get('language', 'en-US')
         
-        print(f"====== Processing chatbot request ======")
-        print(f"User message: {user_message}")
-        print(f"Language code: {language_code}")
-        
-        # Create response cache if it doesn't exist
-        if not hasattr(process_chatbot, 'cache'):
-            process_chatbot.cache = {}
-            
-        # Generate cache key from message and language
-        cache_key = f"{user_message.lower().strip()}_{language_code}"
-        
-        # Check cache for existing response
-        if cache_key in process_chatbot.cache:
-            print(f"Using cached chatbot response for: {cache_key[:30]}...")
-            cached_response = process_chatbot.cache[cache_key]
-            return jsonify(cached_response)
+        print(f"Processing chatbot request: {user_message} in language {language_code}")
         
         # Get response using our enhanced pattern matching
-        start_time = time.time()
-        print(f"Calling process_message with message and language: {language_code}")
         response_text = process_message(user_message, language_code)
-        processing_time = time.time() - start_time
-        print(f"Generated response in {processing_time:.2f} seconds")
-        print(f"Response text: {response_text[:100]}...")
-        
-        # Verify language - ensure non-English responses are actually translated
-        if not language_code.startswith('en'):
-            # Force translation if still in English
-            english_words = ['the', 'is', 'and', 'to', 'for', 'your', 'with', 'that', 'have', 'plant', 'disease']
-            english_word_count = sum(1 for word in english_words if f" {word} " in f" {response_text.lower()} ")
-            
-            if english_word_count > 5:  # If response seems to be in English
-                print(f"Response appears to be in English despite language {language_code}. Forcing translation...")
-                response_text = translate_text(response_text, language_code)
         
         # Generate speech from text if available
         audio_url = None
         if response_text and TEXT_TO_SPEECH_AVAILABLE:
-            tts_start = time.time()
             audio_url = generate_text_to_speech(response_text, language_code)
-            tts_time = time.time() - tts_start
-            print(f"Generated speech in {tts_time:.2f} seconds")
-            if audio_url:
-                print(f"Audio URL: {audio_url}")
-            else:
-                print("Failed to generate audio")
         
-        # Create response
-        response = {
+        return jsonify({
             'success': True,
             'response': response_text,
-            'audioUrl': audio_url,
-            'language': language_code
-        }
-        
-        # Cache the response
-        process_chatbot.cache[cache_key] = response
-        
-        # Limit cache size to prevent memory issues
-        if len(process_chatbot.cache) > 100:
-            # Remove oldest entries (first 20)
-            oldest_keys = list(process_chatbot.cache.keys())[:20]
-            for key in oldest_keys:
-                del process_chatbot.cache[key]
-        
-        print(f"====== Chatbot request completed ======")
-        return jsonify(response)
+            'audioUrl': audio_url
+        })
     
     except Exception as e:
         print(f"Error in chatbot processing: {str(e)}")
-        print(traceback.format_exc())
         return jsonify({
             'success': False,
             'error': str(e)
@@ -823,23 +538,7 @@ def process_chatbot():
 # Text-to-Speech function
 def generate_text_to_speech(text, language_code='en-US'):
     if not TEXT_TO_SPEECH_AVAILABLE:
-        print("Text-to-Speech is not available: the required library is not installed")
         return None
-    
-    # Extract the base language code
-    base_lang = language_code.split('-')[0]
-        
-    # Create a cache if it doesn't exist
-    if not hasattr(generate_text_to_speech, 'cache'):
-        generate_text_to_speech.cache = {}
-        
-    # Generate cache key from text and language
-    cache_key = f"{text[:50]}_{language_code}"
-    
-    # Return cached audio URL if available
-    if cache_key in generate_text_to_speech.cache:
-        print(f"Using cached TTS audio for: {cache_key[:30]}...")
-        return generate_text_to_speech.cache[cache_key]
         
     try:
         # Set API key for Text-to-Speech
@@ -848,66 +547,40 @@ def generate_text_to_speech(text, language_code='en-US'):
         # If no API key is available, return None
         if not api_key:
             print("No Text-to-Speech API key available, skipping audio generation")
-            print("Set the GOOGLE_API_KEY environment variable to enable Text-to-Speech")
             return None
             
         os.environ["GOOGLE_API_KEY"] = api_key
         
         # Initialize Text-to-Speech client
-        try:
-            client = texttospeech.TextToSpeechClient()
-        except Exception as e:
-            print(f"Failed to initialize Text-to-Speech client: {str(e)}")
-            print("This may be due to authentication issues - ensure your API key is correct")
-            return None
+        client = texttospeech.TextToSpeechClient()
         
         # Set input text
         synthesis_input = texttospeech.SynthesisInput(text=text)
         
-        # Enhanced language map with more voice options
+        # Map language code to voice
         language_map = {
-            'en-US': {'language_code': 'en-US', 'name': 'en-US-Neural2-F', 'ssml_gender': 'FEMALE'},
-            'hi-IN': {'language_code': 'hi-IN', 'name': 'hi-IN-Neural2-A', 'ssml_gender': 'FEMALE'},
-            'te-IN': {'language_code': 'te-IN', 'name': 'te-IN-Standard-A', 'ssml_gender': 'FEMALE'},
-            'ta-IN': {'language_code': 'ta-IN', 'name': 'ta-IN-Standard-A', 'ssml_gender': 'FEMALE'},
-            'kn-IN': {'language_code': 'kn-IN', 'name': 'kn-IN-Standard-A', 'ssml_gender': 'FEMALE'},
-            'ml-IN': {'language_code': 'ml-IN', 'name': 'ml-IN-Standard-A', 'ssml_gender': 'FEMALE'}
+            'en-US': {'language_code': 'en-US', 'name': 'en-US-Neural2-F'},
+            'hi-IN': {'language_code': 'hi-IN', 'name': 'hi-IN-Neural2-A'},
+            'te-IN': {'language_code': 'te-IN', 'name': 'te-IN-Standard-A'},
+            'ta-IN': {'language_code': 'ta-IN', 'name': 'ta-IN-Standard-A'},
+            'kn-IN': {'language_code': 'kn-IN', 'name': 'kn-IN-Standard-A'},
+            'ml-IN': {'language_code': 'ml-IN', 'name': 'ml-IN-Standard-A'}
         }
         
-        # Fallback to base language codes if specific variant not found
-        if language_code not in language_map:
-            base_lang_key = None
-            for lang_key in language_map.keys():
-                if lang_key.startswith(f"{base_lang}-"):
-                    base_lang_key = lang_key
-                    break
-            
-            if base_lang_key:
-                print(f"Using fallback voice {base_lang_key} for {language_code}")
-                voice_params = language_map[base_lang_key]
-            else:
-                print(f"No voice found for {language_code}, using English")
-                voice_params = language_map['en-US']
-        else:
-            voice_params = language_map[language_code]
+        voice_params = language_map.get(language_code, language_map['en-US'])
         
         # Configure voice
         voice = texttospeech.VoiceSelectionParams(
             language_code=voice_params['language_code'],
-            name=voice_params['name'],
-            ssml_gender=getattr(texttospeech.SsmlVoiceGender, voice_params['ssml_gender'])
+            name=voice_params['name']
         )
         
         # Configure audio output
         audio_config = texttospeech.AudioConfig(
-            audio_encoding=texttospeech.AudioEncoding.MP3,
-            speaking_rate=1.0,  # Normal speed
-            pitch=0.0,  # Default pitch
-            volume_gain_db=0.0  # Default volume
+            audio_encoding=texttospeech.AudioEncoding.MP3
         )
         
         # Generate speech
-        print(f"Requesting TTS for text in {language_code}")
         response = client.synthesize_speech(
             input=synthesis_input,
             voice=voice,
@@ -925,42 +598,16 @@ def generate_text_to_speech(text, language_code='en-US'):
         audio_url = f"/static/tts/{audio_file_name}"
         
         # Ensure the directory exists
-        tts_dir = os.path.join(app.static_folder, 'tts')
-        os.makedirs(tts_dir, exist_ok=True)
+        os.makedirs(os.path.join(app.static_folder, 'tts'), exist_ok=True)
         
         # Move file to static directory
-        permanent_path = os.path.join(tts_dir, audio_file_name)
+        permanent_path = os.path.join(app.static_folder, 'tts', audio_file_name)
         os.rename(audio_path, permanent_path)
-        
-        # Cache the audio URL
-        generate_text_to_speech.cache[cache_key] = audio_url
-        
-        # Limit cache size
-        if len(generate_text_to_speech.cache) > 50:
-            # Remove oldest entries
-            oldest_keys = list(generate_text_to_speech.cache.keys())[:10]
-            for key in oldest_keys:
-                del generate_text_to_speech.cache[key]
-                
-        # Clean up old audio files (files older than 1 hour)
-        try:
-            cleanup_time = time.time() - 3600  # 1 hour ago
-            for old_file in os.listdir(tts_dir):
-                file_path = os.path.join(tts_dir, old_file)
-                if os.path.isfile(file_path) and os.path.getmtime(file_path) < cleanup_time:
-                    try:
-                        os.remove(file_path)
-                        print(f"Removed old TTS file: {old_file}")
-                    except:
-                        pass
-        except Exception as cleanup_err:
-            print(f"Error during TTS file cleanup: {str(cleanup_err)}")
         
         return audio_url
     
     except Exception as e:
         print(f"Error generating speech: {str(e)}")
-        print(traceback.format_exc())
         return None
 
 # Configure static folder if it doesn't exist
@@ -974,6 +621,4 @@ if TEXT_TO_SPEECH_AVAILABLE:
     os.makedirs(os.path.join(app.static_folder, 'tts'), exist_ok=True)
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    debug = os.environ.get("DEBUG", "True").lower() == "true"
-    app.run(debug=debug, host="0.0.0.0", port=port)
+    app.run(debug=True, host="0.0.0.0", port=5000) 
