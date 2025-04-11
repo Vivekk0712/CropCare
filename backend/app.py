@@ -22,9 +22,19 @@ import time
 
 # Download NLTK resources
 try:
-    nltk.download('punkt', quiet=True)
-    nltk.download('stopwords', quiet=True)
-    nltk.download('wordnet', quiet=True)
+    # Specify the download directory to ensure permissions
+    nltk_data_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'nltk_data')
+    os.makedirs(nltk_data_path, exist_ok=True)
+    
+    # Download all necessary resources with explicit path
+    nltk.download('punkt', download_dir=nltk_data_path, quiet=True)
+    nltk.download('stopwords', download_dir=nltk_data_path, quiet=True)
+    nltk.download('wordnet', download_dir=nltk_data_path, quiet=True)
+    
+    # Add the download path to NLTK's search paths
+    nltk.data.path.append(nltk_data_path)
+    
+    print(f"NLTK resources downloaded to {nltk_data_path}")
     NLP_AVAILABLE = True
 except Exception as e:
     print(f"Error downloading NLTK resources: {str(e)}")
@@ -37,6 +47,11 @@ except ImportError:
     print("Google Cloud Text-to-Speech not available. Chat responses will not have audio.")
     print("To enable text-to-speech functionality, install the package with: pip install google-cloud-texttospeech")
     TEXT_TO_SPEECH_AVAILABLE = False
+
+# Initialize variables at module level
+SUPABASE_URL = None
+SUPABASE_KEY = None
+supabase = None
 
 # Load environment variables from .env file
 load_dotenv()
@@ -66,9 +81,18 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 # Initialize Supabase client
 try:
+    print(f"Initializing Supabase client with URL: {SUPABASE_URL[:20]}...")
     supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    # Test the connection
+    test_result = supabase.table("predictions").select("count", count="exact").execute()
+    count = test_result.count if hasattr(test_result, 'count') else 0
+    print(f"Successfully connected to Supabase. Found {count} predictions in the database.")
 except Exception as e:
     print(f"Error initializing Supabase client: {str(e)}")
+    print(f"Supabase URL: {SUPABASE_URL[:20]}...")
+    print(f"Supabase Key length: {len(SUPABASE_KEY)}")
+    traceback_str = traceback.format_exc()
+    print(f"Traceback: {traceback_str}")
     supabase = None
 
 # Your specific Clarifai configuration
@@ -258,27 +282,60 @@ def translate_text(text, target_language):
 def preprocess_text(text):
     """Process text to extract relevant features"""
     if not NLP_AVAILABLE:
+        print("NLP is not available, returning lowercased text only")
         return text.lower()
     
     try:
-        # Tokenize
-        tokens = word_tokenize(text.lower())
+        # Check if NLTK data is available before proceeding
+        try:
+            # Try to get stop words as a test
+            nltk.data.find('corpora/stopwords')
+            print("NLTK data accessible")
+        except LookupError:
+            print("NLTK data not accessible, downloading now...")
+            # Path to download data
+            nltk_data_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'nltk_data')
+            os.makedirs(nltk_data_path, exist_ok=True)
+            
+            # Download necessary resources
+            nltk.download('punkt', download_dir=nltk_data_path, quiet=True)
+            nltk.download('stopwords', download_dir=nltk_data_path, quiet=True)
+            nltk.download('wordnet', download_dir=nltk_data_path, quiet=True)
+            
+            # Add to path
+            nltk.data.path.append(nltk_data_path)
+            print(f"NLTK data downloaded to {nltk_data_path}")
         
-        # Remove stopwords and punctuation
-        stop_words = set(stopwords.words('english'))
-        tokens = [word for word in tokens if word.isalnum() and word not in stop_words]
-        
-        # Lemmatize
-        lemmatizer = WordNetLemmatizer()
-        tokens = [lemmatizer.lemmatize(word) for word in tokens]
-        
-        return ' '.join(tokens)
+        # Now process the text
+        try:
+            # Tokenize
+            tokens = word_tokenize(text.lower())
+            
+            # Remove stopwords and punctuation
+            stop_words = set(stopwords.words('english'))
+            tokens = [word for word in tokens if word.isalnum() and word not in stop_words]
+            
+            # Lemmatize
+            lemmatizer = WordNetLemmatizer()
+            tokens = [lemmatizer.lemmatize(word) for word in tokens]
+            
+            processed_text = ' '.join(tokens)
+            print(f"Successfully preprocessed text: '{text[:30]}...' to '{processed_text[:30]}...'")
+            return processed_text
+        except Exception as processing_err:
+            print(f"Error during text processing: {str(processing_err)}")
+            return text.lower()
+            
     except Exception as e:
         print(f"Error in NLP preprocessing: {str(e)}")
+        print(traceback.format_exc())
         return text.lower()
 
 @app.route("/predict", methods=["POST"])
 def predict():
+    # Declare global supabase to modify the module-level variable
+    global supabase
+    
     print("Predict endpoint called")
     
     if "image" not in request.files:
@@ -395,18 +452,27 @@ def predict():
         if supabase:
             try:
                 print(f"Attempting to store prediction in Supabase for user {user_id}")
-                prediction_data = {
-                    "id": prediction_id,
-                    "user_id": user_id,
-                    "image_name": filename,
-                    "image_data": image_base64[:100] + "...", # Truncated for logging
-                    "prediction": highest_prediction["name"],
-                    "confidence": highest_prediction["value"],
-                    "created_at": timestamp
-                }
                 
-                print(f"Prediction data prepared, inserting into Supabase table 'predictions'")
-                result = supabase.table("predictions").insert({
+                # First verify connection is still active by making a simple query
+                try:
+                    test_query = supabase.table("predictions").select("count", count="exact").limit(1).execute()
+                    print(f"Connection test successful. Database is accessible.")
+                except Exception as conn_err:
+                    print(f"Supabase connection test failed: {str(conn_err)}")
+                    print(f"Attempting to reconnect...")
+                    # Try to reconnect without using global keyword
+                    try:
+                        # Access the module-level variables directly
+                        new_supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+                        # If we get here, connection succeeded
+                        supabase = new_supabase  # This now updates the module-level variable
+                        print("Successfully reconnected to Supabase")
+                    except Exception as reconnect_err:
+                        print(f"Reconnection failed: {str(reconnect_err)}")
+                        raise Exception("Failed to connect to database") from reconnect_err
+                
+                # Prepare prediction data
+                prediction_data = {
                     "id": prediction_id,
                     "user_id": user_id,
                     "image_name": filename,
@@ -414,9 +480,39 @@ def predict():
                     "prediction": highest_prediction["name"],
                     "confidence": highest_prediction["value"],
                     "created_at": timestamp
-                }).execute()
+                }
                 
-                print(f"Successfully stored prediction in Supabase. Result: {result}")
+                print(f"Prediction data prepared, inserting into Supabase table 'predictions'")
+                print(f"Data sample: id={prediction_id}, user={user_id}, prediction={highest_prediction['name']}, confidence={highest_prediction['value']}")
+                
+                # Check data format to ensure it matches database schema
+                # Ensure prediction_id is UUID format 
+                if not re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', prediction_id):
+                    prediction_id = str(uuid.uuid4())
+                    prediction_data["id"] = prediction_id
+                    print(f"Updated prediction_id to valid UUID: {prediction_id}")
+                
+                # Ensure confidence is a float
+                if not isinstance(prediction_data["confidence"], float):
+                    try:
+                        prediction_data["confidence"] = float(prediction_data["confidence"])
+                    except:
+                        prediction_data["confidence"] = 0.0
+                
+                # Use proper ISO format for timestamp
+                try:
+                    if not isinstance(prediction_data["created_at"], str) or not prediction_data["created_at"].endswith('Z'):
+                        dt = datetime.fromisoformat(prediction_data["created_at"].replace('Z', '+00:00'))
+                        prediction_data["created_at"] = dt.isoformat()
+                except:
+                    prediction_data["created_at"] = datetime.now().isoformat()
+                
+                result = supabase.table("predictions").insert(prediction_data).execute()
+                
+                if hasattr(result, 'data') and len(result.data) > 0:
+                    print(f"Successfully stored prediction in Supabase. Result data: {json.dumps(result.data[0])[:100]}...")
+                else:
+                    print(f"Supabase insert returned unexpected result: {result}")
             except Exception as e:
                 error_traceback = traceback.format_exc()
                 print(f"Error storing prediction in Supabase: {str(e)}")
@@ -454,6 +550,9 @@ def predict():
 
 @app.route("/history", methods=["GET"])
 def history():
+    # Declare global supabase to modify the module-level variable
+    global supabase
+    
     try:
         # Get user ID from query parameter
         user_id = request.args.get("user_id", "anonymous")
@@ -464,17 +563,45 @@ def history():
         if supabase:
             try:
                 print(f"Attempting to fetch predictions from Supabase for user {user_id}")
+                
+                # First verify connection is still active by making a simple query
+                try:
+                    test_query = supabase.table("predictions").select("count", count="exact").limit(1).execute()
+                    print(f"Connection test successful. Database is accessible.")
+                except Exception as conn_err:
+                    print(f"Supabase connection test failed: {str(conn_err)}")
+                    print(f"Attempting to reconnect...")
+                    # Try to reconnect without using global keyword
+                    try:
+                        # Access the module-level variables directly
+                        new_supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+                        # If we get here, connection succeeded
+                        supabase = new_supabase  # This now updates the module-level variable
+                        print("Successfully reconnected to Supabase")
+                    except Exception as reconnect_err:
+                        print(f"Reconnection failed: {str(reconnect_err)}")
+                        raise Exception("Failed to connect to database") from reconnect_err
+                
+                # Now proceed with the actual query
                 result = supabase.table("predictions") \
                         .select("id, user_id, image_name, prediction, confidence, created_at") \
                         .eq("user_id", user_id) \
                         .order("created_at", desc=True) \
                         .execute()
                 
+                print(f"Query executed. Response type: {type(result)}")
+                
                 if hasattr(result, 'data'):
                     supabase_predictions = result.data
                     print(f"Successfully fetched {len(supabase_predictions)} predictions from Supabase")
+                    
+                    # Debug the first prediction if available
+                    if len(supabase_predictions) > 0:
+                        print(f"Sample prediction: {json.dumps(supabase_predictions[0])[:100]}...")
+                    else:
+                        print("No predictions found in Supabase for this user")
                 else:
-                    print("Supabase query returned no data attribute")
+                    print(f"Supabase query returned no data attribute. Result: {result}")
             except Exception as e:
                 error_traceback = traceback.format_exc()
                 print(f"Error fetching from Supabase: {str(e)}")
@@ -485,6 +612,10 @@ def history():
         # Get from memory
         memory_predictions = in_memory_predictions.get(user_id, [])
         print(f"Found {len(memory_predictions)} predictions in memory")
+        
+        # Debug in-memory predictions
+        if memory_predictions:
+            print(f"Sample in-memory prediction: {json.dumps(memory_predictions[0])[:100]}...")
         
         # Combine and sort predictions
         combined_predictions = supabase_predictions + memory_predictions
@@ -498,7 +629,9 @@ def history():
         
         return jsonify({
             "success": True,
-            "predictions": sorted_predictions
+            "predictions": sorted_predictions,
+            "from_supabase": len(supabase_predictions),
+            "from_memory": len(memory_predictions)
         })
         
     except Exception as e:
@@ -509,7 +642,11 @@ def history():
         return jsonify({
             "success": False,
             "error": f"Error fetching prediction history: {error_message}",
-            "predictions": []
+            "predictions": [],
+            "debug_info": {
+                "supabase_available": globals().get('supabase') is not None,
+                "in_memory_available": bool(in_memory_predictions)
+            }
         }), 500
 
 # Knowledge base for plant diseases
@@ -594,6 +731,8 @@ def process_message(message, language_code='en-US'):
     Process a message and return a response based on pattern matching and NLP.
     Supports multiple languages through translation.
     """
+    global supabase  # Add global reference
+    
     print(f"------ Processing message in {language_code} ------")
     original_message = message
     
@@ -606,11 +745,23 @@ def process_message(message, language_code='en-US'):
         try:
             # Translation not needed for input in most cases as we process based on keywords
             # but we'll log that we received a non-English message
-            print(f"Received non-English message in language {language_code}")
+            print(f"Received non-English message in {language_code}")
         except Exception as e:
-            print(f"Error handling non-English input: {str(e)}")
+            print(f"Error handling non-English message: {str(e)}")
     
-    processed_message = preprocess_text(message.lower())
+    # Process the message with NLP if available
+    processed_message = ""
+    try:
+        processed_message = preprocess_text(message)
+        print(f"Processed message: {processed_message}")
+    except Exception as nlp_error:
+        print(f"Error in NLP preprocessing:")
+        print(traceback.format_exc())
+        # Fall back to lowercase version
+        processed_message = message.lower()
+    
+    # Initialize response
+    response = ""
     
     # Extract potential disease name from the message
     disease_names = [
@@ -657,9 +808,6 @@ def process_message(message, language_code='en-US'):
         print(f"Identified intent: {intent}")
     
     # Generate response based on intent and identified disease
-    response = None
-    
-    # If both disease and intent are identified, provide specific information
     if identified_disease and intent and identified_disease in plant_disease_data:
         disease_info = plant_disease_data[identified_disease]
         if intent in disease_info:
