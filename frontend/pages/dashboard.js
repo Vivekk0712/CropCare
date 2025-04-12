@@ -155,78 +155,101 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="container">
+    <div className="dashboard-container">
       <Head>
-        <title>Dashboard | Crop Disease Detection</title>
-        <meta name="description" content="Dashboard for crop disease predictions" />
+        <title>Analytics Dashboard | Crop Disease Detection</title>
+        <meta name="description" content="Comprehensive analytics dashboard for crop disease predictions" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
-      <h1 className="main-heading">Prediction Dashboard</h1>
+      <div className="dashboard-header">
+        <h1 className="dashboard-title">Prediction Analytics</h1>
+        <p className="dashboard-subtitle">Visualize and analyze your crop disease predictions</p>
+      </div>
       
       <div className="navigation-bar">
-        <Link href="/">
-          <span className="nav-btn">Home</span>
-        </Link>
-        <Link href="/history">
-          <span className="nav-btn">History</span>
-        </Link>
-        <Link href="/chatbot">
-          <span className="nav-btn">Chatbot</span>
-        </Link>
+        <div className="nav-links">
+          <Link href="/">
+            <span className="nav-btn"><i className="nav-icon">🏠</i> Home</span>
+          </Link>
+          <Link href="/history">
+            <span className="nav-btn"><i className="nav-icon">📋</i> History</span>
+          </Link>
+          <Link href="/chatbot">
+            <span className="nav-btn"><i className="nav-icon">💬</i> Chatbot</span>
+          </Link>
+        </div>
         <button 
           onClick={refreshDashboard} 
-          className="nav-btn refresh-btn"
+          className="refresh-btn"
           disabled={loading}
         >
+          <i className="refresh-icon">{loading ? '⏳' : '🔄'}</i> 
           {loading ? 'Refreshing...' : 'Refresh Data'}
         </button>
       </div>
 
       {error && (
         <div className="error-card">
-          <p>{error}</p>
-          <p>User ID: {userId}</p>
-          <button onClick={refreshDashboard} className="btn">Try Again</button>
+          <div className="error-icon">⚠️</div>
+          <div className="error-content">
+            <p className="error-message">{error}</p>
+            <p className="error-user-id">User ID: {userId}</p>
+            <button onClick={refreshDashboard} className="retry-btn">Try Again</button>
+          </div>
         </div>
       )}
       
       {loading ? (
-        <div className="card loading-card">
+        <div className="loading-card">
           <div className="loading-spinner"></div>
-          <p>Loading dashboard data...</p>
+          <p className="loading-text">Loading dashboard analytics...</p>
         </div>
       ) : predictions.length === 0 ? (
-        <div className="card empty-card">
-          <h3>No prediction data found</h3>
-          <p>Upload images on the home page to start building your dashboard.</p>
+        <div className="empty-card">
+          <div className="empty-icon">📊</div>
+          <h3 className="empty-title">No prediction data found</h3>
+          <p className="empty-message">Upload images on the home page to start building your dashboard.</p>
+          <Link href="/">
+            <span className="empty-action-btn">Go to Upload Page</span>
+          </Link>
           <p className="user-id">Your User ID: {userId}</p>
         </div>
       ) : (
         <>
           <div className="stats-grid">
             <div className="stat-card">
-              <h3>Total Predictions</h3>
+              <div className="stat-icon">📊</div>
+              <h3 className="stat-title">Total Predictions</h3>
               <div className="stat-value">{stats.totalPredictions}</div>
+              <div className="stat-trend positive">
+                {stats.totalPredictions > 0 ? '+' + stats.totalPredictions : '0'} all time
+              </div>
             </div>
             
             <div className="stat-card">
-              <h3>Average Confidence</h3>
+              <div className="stat-icon">📈</div>
+              <h3 className="stat-title">Average Confidence</h3>
               <div className="stat-value">{stats.confidenceAvg}%</div>
+              <div className="stat-trend">
+                Across all predictions
+              </div>
             </div>
             
             <div className="stat-card">
-              <h3>Most Common Disease</h3>
+              <div className="stat-icon">🔍</div>
+              <h3 className="stat-title">Most Common Disease</h3>
               <div className="stat-value">{stats.mostCommonDisease}</div>
-              <div className="stat-subtext">
+              <div className="stat-trend">
                 {stats.diseaseCounts[stats.mostCommonDisease] || 0} occurrences
               </div>
             </div>
             
             <div className="stat-card">
-              <h3>Highest Confidence Disease</h3>
+              <div className="stat-icon">🎯</div>
+              <h3 className="stat-title">Highest Confidence</h3>
               <div className="stat-value">{stats.mostConfidentDisease}</div>
-              <div className="stat-subtext">
+              <div className="stat-trend positive">
                 {stats.maxConfidence}% average
               </div>
             </div>
@@ -238,13 +261,27 @@ export default function Dashboard() {
             stats={stats} 
           />
           
-          <div className="card">
-            <h3>Recent Activity</h3>
+          <div className="activity-card">
+            <div className="activity-header">
+              <h3 className="activity-title">Recent Activity</h3>
+              <span className="activity-subtitle">{Math.min(stats.recentActivity.length, 10)} most recent predictions</span>
+            </div>
             <div className="activity-list">
               {stats.recentActivity.map((prediction) => (
                 <div key={prediction.id} className="activity-item">
-                  <div className="activity-disease">{prediction.prediction}</div>
-                  <div className="activity-confidence">{prediction.confidence}%</div>
+                  <div className="activity-disease">
+                    <span className="disease-indicator" style={{
+                      backgroundColor: prediction.confidence > 90 ? '#10b981' : 
+                                      prediction.confidence > 75 ? '#3b82f6' : '#f59e0b'
+                    }}></span>
+                    {prediction.prediction}
+                  </div>
+                  <div className="activity-confidence" style={{
+                    color: prediction.confidence > 90 ? '#10b981' : 
+                           prediction.confidence > 75 ? '#3b82f6' : '#f59e0b'
+                  }}>
+                    {prediction.confidence}%
+                  </div>
                   <div className="activity-date">{formatDate(prediction.created_at)}</div>
                 </div>
               ))}
@@ -254,66 +291,200 @@ export default function Dashboard() {
       )}
       
       <style jsx>{`
-        .container {
-          max-width: 1200px;
+        .dashboard-container {
+          max-width: 1300px;
           margin: 0 auto;
-          padding: 20px;
+          padding: 25px;
+          background-color: #f8fafc;
+          min-height: 100vh;
         }
         
-        .main-heading {
+        .dashboard-header {
           text-align: center;
           margin-bottom: 30px;
-          color: #2c3e50;
+        }
+        
+        .dashboard-title {
+          font-size: 2.5rem;
+          font-weight: 700;
+          margin-bottom: 5px;
+          background: linear-gradient(90deg, #3b82f6, #10b981);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+        
+        .dashboard-subtitle {
+          color: #64748b;
+          font-size: 1.2rem;
         }
         
         .navigation-bar {
           display: flex;
           justify-content: space-between;
+          align-items: center;
           margin-bottom: 30px;
-          flex-wrap: wrap;
-          gap: 10px;
+          background: white;
+          border-radius: 12px;
+          padding: 15px 25px;
+          box-shadow: 0 2px 15px rgba(0, 0, 0, 0.05);
+        }
+        
+        .nav-links {
+          display: flex;
+          gap: 15px;
         }
         
         .nav-btn {
           padding: 10px 20px;
-          background: #3498db;
-          color: white;
-          border-radius: 4px;
+          background: transparent;
+          color: #334155;
+          border-radius: 8px;
           cursor: pointer;
-          border: none;
           font-size: 16px;
-          text-align: center;
-          display: inline-block;
-        }
-        
-        .refresh-btn {
-          background: #27ae60;
+          font-weight: 500;
+          transition: all 0.2s ease;
+          display: flex;
+          align-items: center;
+          gap: 8px;
         }
         
         .nav-btn:hover {
-          opacity: 0.9;
+          background: #f1f5f9;
+          color: #3b82f6;
         }
         
-        .card {
-          background: white;
+        .nav-icon {
+          font-size: 18px;
+        }
+        
+        .refresh-btn {
+          padding: 10px 20px;
+          background: #3b82f6;
+          color: white;
           border-radius: 8px;
-          padding: 20px;
-          margin-bottom: 20px;
-          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+          cursor: pointer;
+          border: none;
+          font-size: 16px;
+          font-weight: 500;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          transition: all 0.2s ease;
+        }
+        
+        .refresh-btn:hover {
+          background: #2563eb;
+          transform: translateY(-2px);
+        }
+        
+        .refresh-btn:disabled {
+          background: #94a3b8;
+          cursor: not-allowed;
+        }
+        
+        .refresh-icon {
+          font-size: 18px;
         }
         
         .error-card {
-          background: #ffecec;
-          border-left: 4px solid #e74c3c;
-          padding: 15px;
-          margin-bottom: 20px;
-          border-radius: 5px;
+          display: flex;
+          align-items: center;
+          background: #fee2e2;
+          border-left: 4px solid #ef4444;
+          padding: 20px;
+          margin-bottom: 30px;
+          border-radius: 8px;
+          box-shadow: 0 4px 15px rgba(239, 68, 68, 0.1);
+        }
+        
+        .error-icon {
+          font-size: 24px;
+          margin-right: 15px;
+        }
+        
+        .error-content {
+          flex: 1;
+        }
+        
+        .error-message {
+          font-weight: 500;
+          color: #b91c1c;
+          margin-bottom: 5px;
+        }
+        
+        .error-user-id {
+          color: #64748b;
+          margin-bottom: 10px;
+          font-size: 14px;
+        }
+        
+        .retry-btn {
+          padding: 8px 15px;
+          background: #ef4444;
+          color: white;
+          border: none;
+          border-radius: 6px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        
+        .retry-btn:hover {
+          background: #dc2626;
         }
         
         .empty-card {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          background: white;
+          border-radius: 12px;
+          padding: 50px 30px;
+          margin-bottom: 30px;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
           text-align: center;
-          padding: 40px 20px;
-          color: #7f8c8d;
+        }
+        
+        .empty-icon {
+          font-size: 48px;
+          margin-bottom: 20px;
+        }
+        
+        .empty-title {
+          font-size: 24px;
+          font-weight: 600;
+          margin-bottom: 10px;
+          color: #334155;
+        }
+        
+        .empty-message {
+          color: #64748b;
+          margin-bottom: 20px;
+          max-width: 500px;
+        }
+        
+        .empty-action-btn {
+          padding: 12px 24px;
+          background: #3b82f6;
+          color: white;
+          border-radius: 8px;
+          font-weight: 500;
+          cursor: pointer;
+          display: inline-block;
+          margin-bottom: 20px;
+          transition: all 0.2s ease;
+        }
+        
+        .empty-action-btn:hover {
+          background: #2563eb;
+          transform: translateY(-2px);
+        }
+        
+        .user-id {
+          color: #64748b;
+          font-size: 14px;
         }
         
         .loading-card {
@@ -321,17 +492,26 @@ export default function Dashboard() {
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          padding: 40px 20px;
+          background: white;
+          border-radius: 12px;
+          padding: 50px 30px;
+          margin-bottom: 30px;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
         }
         
         .loading-spinner {
-          border: 4px solid #f3f3f3;
-          border-top: 4px solid #3498db;
+          border: 4px solid #f1f5f9;
+          border-top: 4px solid #3b82f6;
           border-radius: 50%;
-          width: 30px;
-          height: 30px;
-          animation: spin 2s linear infinite;
-          margin-bottom: 15px;
+          width: 40px;
+          height: 40px;
+          animation: spin 1.5s linear infinite;
+          margin-bottom: 20px;
+        }
+        
+        .loading-text {
+          color: #64748b;
+          font-size: 16px;
         }
         
         @keyframes spin {
@@ -341,29 +521,97 @@ export default function Dashboard() {
         
         .stats-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-          gap: 20px;
-          margin-bottom: 20px;
+          grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+          gap: 25px;
+          margin-bottom: 30px;
         }
         
         .stat-card {
           background: white;
-          border-radius: 8px;
-          padding: 20px;
-          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-          text-align: center;
+          border-radius: 12px;
+          padding: 25px;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+          transition: all 0.3s ease;
+          display: flex;
+          flex-direction: column;
+          position: relative;
+          overflow: hidden;
+        }
+        
+        .stat-card:hover {
+          transform: translateY(-5px);
+          box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+        }
+        
+        .stat-card::before {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 5px;
+          background: linear-gradient(90deg, #3b82f6, #10b981);
+        }
+        
+        .stat-icon {
+          font-size: 24px;
+          margin-bottom: 15px;
+        }
+        
+        .stat-title {
+          font-size: 16px;
+          font-weight: 500;
+          color: #64748b;
+          margin-bottom: 10px;
         }
         
         .stat-value {
-          font-size: 2rem;
-          font-weight: bold;
-          color: #3498db;
-          margin: 10px 0;
+          font-size: 2.5rem;
+          font-weight: 700;
+          color: #0f172a;
+          margin-bottom: 5px;
+          background: linear-gradient(90deg, #1e40af, #0369a1);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
         }
         
-        .stat-subtext {
-          font-size: 0.9rem;
-          color: #7f8c8d;
+        .stat-trend {
+          font-size: 14px;
+          color: #64748b;
+        }
+        
+        .stat-trend.positive {
+          color: #10b981;
+        }
+        
+        .activity-card {
+          background: white;
+          border-radius: 12px;
+          padding: 25px;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+          margin-top: 30px;
+        }
+        
+        .activity-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          margin-bottom: 20px;
+          padding-bottom: 15px;
+          border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .activity-title {
+          font-size: 20px;
+          font-weight: 600;
+          color: #0f172a;
+          margin: 0;
+        }
+        
+        .activity-subtitle {
+          font-size: 14px;
+          color: #64748b;
         }
         
         .activity-list {
@@ -373,9 +621,10 @@ export default function Dashboard() {
         .activity-item {
           display: grid;
           grid-template-columns: 1fr auto auto;
-          gap: 15px;
-          padding: 12px 0;
-          border-bottom: 1px solid #f1f1f1;
+          gap: 20px;
+          padding: 15px 0;
+          border-bottom: 1px solid #f1f5f9;
+          align-items: center;
         }
         
         .activity-item:last-child {
@@ -383,27 +632,60 @@ export default function Dashboard() {
         }
         
         .activity-disease {
-          font-weight: bold;
+          font-weight: 500;
+          color: #0f172a;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        
+        .disease-indicator {
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          display: inline-block;
         }
         
         .activity-confidence {
-          color: #27ae60;
+          font-weight: 600;
         }
         
         .activity-date {
-          color: #7f8c8d;
-          font-size: 0.9rem;
-        }
-        
-        h3 {
-          margin-top: 0;
-          color: #2c3e50;
+          color: #64748b;
+          font-size: 14px;
         }
         
         @media (max-width: 768px) {
+          .navigation-bar {
+            flex-direction: column;
+            gap: 15px;
+          }
+          
+          .nav-links {
+            width: 100%;
+            justify-content: space-between;
+          }
+          
+          .refresh-btn {
+            width: 100%;
+            justify-content: center;
+          }
+          
           .activity-item {
-            grid-template-columns: 1fr;
-            gap: 5px;
+            grid-template-columns: 1fr auto;
+          }
+          
+          .activity-date {
+            grid-column: 1 / -1;
+            padding-top: 5px;
+          }
+          
+          .stat-card {
+            padding: 20px;
+          }
+          
+          .stat-value {
+            font-size: 2rem;
           }
         }
       `}</style>

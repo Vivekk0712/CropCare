@@ -1026,10 +1026,12 @@ def process_message(message, language_code='en-US'):
     ]
     
     identified_disease = None
+    matched_key = None
     for name, key in disease_names:
-        if name.lower() in processed_message:
+        if name.lower() in processed_message.lower():
             identified_disease = key
-            print(f"Identified disease: {key}")
+            matched_key = name.lower()
+            print(f"Identified disease: {key} from text match: {name}")
             break
     
     # Check for disease patterns in original formats (like Apple___Apple_scab)
@@ -1045,8 +1047,9 @@ def process_message(message, language_code='en-US'):
             ]
             
             for variation in disease_variations:
-                if variation in processed_message:
+                if variation.lower() in processed_message.lower():
                     identified_disease = disease_key
+                    matched_key = variation
                     print(f"Found disease using variation {variation} -> {disease_key}")
                     break
             
@@ -1074,21 +1077,78 @@ def process_message(message, language_code='en-US'):
         intent = "treatment"
         print("Treatment intent detected from keywords")
     
+    # Get the normalized disease key for plant_disease_data lookup
+    normalized_disease_key = identified_disease
+    if identified_disease:
+        # Convert to the format used in plant_disease_data if needed
+        # e.g., Apple___Apple_scab -> apple_scab
+        if '___' in identified_disease:
+            # Try to extract the disease part after the crop type
+            _, disease_part = identified_disease.split('___', 1)
+            normalized_disease_key = disease_part.lower()
+        elif identified_disease.endswith('_scab') or identified_disease.endswith('_spot') or identified_disease.endswith('_blight'):
+            # Already in a good format
+            normalized_disease_key = identified_disease.lower()
+        else:
+            # Simple normalization - lowercase and replace ___ with _
+            normalized_disease_key = identified_disease.lower().replace('___', '_')
+        
+        # Check if we need to normalize further to match plant_disease_data keys
+        if normalized_disease_key not in plant_disease_data:
+            # Try simple key mapping
+            simple_mappings = {
+                'apple_scab': 'apple_scab',
+                'apple___apple_scab': 'apple_scab',
+                'black_rot': 'black_spot',  # Map black rot to black spot as fallback
+                'bacterial_leaf_spot': 'bacterial_spot'
+            }
+            
+            if normalized_disease_key in simple_mappings:
+                print(f"Mapping normalized key from {normalized_disease_key} to {simple_mappings[normalized_disease_key]}")
+                normalized_disease_key = simple_mappings[normalized_disease_key]
+        
+        print(f"Using normalized disease key: {normalized_disease_key} for lookup")
+    
     # Generate response based on intent and identified disease
-    if identified_disease and intent and identified_disease in plant_disease_data:
-        disease_info = plant_disease_data[identified_disease]
+    if normalized_disease_key and intent and normalized_disease_key in plant_disease_data:
+        print(f"Generating response for disease {normalized_disease_key} with intent {intent}")
+        disease_info = plant_disease_data[normalized_disease_key]
         if intent in disease_info:
             response = disease_info[intent]
+            print(f"Response for {intent}: {response[:100]}...")
         else:
             # Fallback to description if the specific intent is not available
             response = disease_info["description"]
     
     # If only disease is identified but no specific intent
-    elif identified_disease and identified_disease in plant_disease_data:
-        disease_info = plant_disease_data[identified_disease]
+    elif normalized_disease_key and normalized_disease_key in plant_disease_data:
+        disease_info = plant_disease_data[normalized_disease_key]
         response = (f"{disease_info['name']}: {disease_info['description']} "
                   f"Symptoms include {disease_info['symptoms']} "
                   f"Treatment: {disease_info['treatment']}")
+    
+    # Special cases for specific diseases
+    elif "applescab" in processed_message.lower() or "apple scab" in processed_message.lower():
+        print("Special case detected: Apple Scab")
+        treatment = get_treatment_for_disease("Apple___Apple_scab")
+        if treatment:
+            print(f"Returning special case treatment: {treatment[:100]}...")
+            return treatment
+        
+    elif "tomato" in processed_message.lower() and ("early" in processed_message.lower() and "blight" in processed_message.lower()):
+        print("Special case detected: Tomato Early Blight")
+        treatment = get_treatment_for_disease("Tomato___Early_blight")
+        if treatment:
+            print(f"Returning special case treatment: {treatment[:100]}...")
+            return treatment
+    
+    # For any other disease mentioned, try to get treatment information
+    elif identified_disease and not response:
+        print(f"Attempting to get treatment for {identified_disease}")
+        treatment = get_treatment_for_disease(identified_disease)
+        if treatment and "No specific treatment information available" not in treatment:
+            print(f"Found treatment for {identified_disease}")
+            response = treatment
     
     # General queries about treatments or prevention
     elif "treatment" in processed_message or "remedy" in processed_message:
@@ -1128,27 +1188,12 @@ def process_message(message, language_code='en-US'):
     elif any(word in processed_message for word in ["hello", "hi", "hey", "greetings"]):
         response = "Hello! I'm your Crop Care Assistant. How can I help you with your plants today?"
     
-    # Special cases for specific diseases
-    if "applescab" in processed_message.lower() or "apple scab" in processed_message.lower():
-        print("Special case detected: Apple Scab")
-        treatment = get_treatment_for_disease("Apple___Apple_scab")
-        if treatment:
-            print(f"Returning special case treatment: {treatment[:100]}...")
-            return treatment
-        
-    if "tomato" in processed_message.lower() and ("early" in processed_message.lower() and "blight" in processed_message.lower()):
-        print("Special case detected: Tomato Early Blight")
-        treatment = get_treatment_for_disease("Tomato___Early_blight")
-        if treatment:
-            print(f"Returning special case treatment: {treatment[:100]}...")
-            return treatment
-    
     # Default response if no specific pattern is matched
     if not response:
         response = ("I'm here to help with plant disease questions. You can ask about specific diseases like 'apple scab', "
                    "'late blight', or 'powdery mildew', as well as prevention methods, or treatment options. "
                    "What would you like to know about crop care?")
-    
+
     print(f"Generated English response: {response[:100]}...")
     
     # Translate response if not in English

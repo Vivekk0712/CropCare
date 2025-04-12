@@ -36,6 +36,25 @@ const DashboardCharts = ({ predictions, stats }) => {
     const diseaseLabels = Object.keys(stats.diseaseCounts);
     const diseaseCounts = Object.values(stats.diseaseCounts);
     
+    // Professional color palette
+    const colorPalette = [
+      'rgba(54, 162, 235, 0.8)',
+      'rgba(255, 99, 132, 0.8)',
+      'rgba(75, 192, 192, 0.8)',
+      'rgba(255, 159, 64, 0.8)',
+      'rgba(153, 102, 255, 0.8)',
+      'rgba(255, 205, 86, 0.8)',
+      'rgba(201, 203, 207, 0.8)',
+      'rgba(94, 215, 172, 0.8)',
+      'rgba(138, 121, 235, 0.8)',
+      'rgba(235, 178, 121, 0.8)'
+    ];
+    
+    // Lighter versions for hover states
+    const hoverColorPalette = colorPalette.map(color => 
+      color.replace('0.8', '1')
+    );
+    
     // Prepare data for confidence by disease chart
     const diseaseConfidences = {};
     const diseaseConfidenceCounts = {};
@@ -69,27 +88,65 @@ const DashboardCharts = ({ predictions, stats }) => {
       }
       
       pieChartInstance.current = new Chart(pieChartRef.current, {
-        type: 'pie',
+        type: 'doughnut', // Changed from pie to doughnut for more modern look
         data: {
           labels: diseaseLabels,
           datasets: [{
             data: diseaseCounts,
-            backgroundColor: [
-              '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
-              '#FF9F40', '#8AC249', '#EA5545', '#87BC45', '#D85040'
-            ]
+            backgroundColor: colorPalette.slice(0, diseaseLabels.length),
+            hoverBackgroundColor: hoverColorPalette.slice(0, diseaseLabels.length),
+            borderWidth: 1,
+            borderColor: 'white'
           }]
         },
         options: {
           responsive: true,
+          maintainAspectRatio: false,
           plugins: {
             legend: {
               position: 'right',
+              labels: {
+                padding: 20,
+                usePointStyle: true,
+                pointStyle: 'circle'
+              }
             },
             title: {
               display: true,
-              text: 'Disease Distribution'
+              text: 'Disease Distribution',
+              font: {
+                size: 16,
+                weight: 'bold'
+              },
+              padding: {
+                top: 10,
+                bottom: 15
+              }
+            },
+            tooltip: {
+              backgroundColor: 'rgba(0, 0, 0, 0.7)',
+              padding: 12,
+              titleFont: {
+                size: 14
+              },
+              bodyFont: {
+                size: 13
+              },
+              callbacks: {
+                label: function(context) {
+                  const label = context.label || '';
+                  const value = context.raw || 0;
+                  const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                  const percentage = Math.round((value / total) * 100);
+                  return `${label}: ${value} (${percentage}%)`;
+                }
+              }
             }
+          },
+          cutout: '60%',
+          animation: {
+            animateScale: true,
+            animateRotate: true
           }
         }
       });
@@ -108,22 +165,64 @@ const DashboardCharts = ({ predictions, stats }) => {
           datasets: [{
             label: 'Average Confidence (%)',
             data: avgConfidences,
-            backgroundColor: '#36A2EB'
+            backgroundColor: colorPalette.slice(0, diseaseLabels.length),
+            hoverBackgroundColor: hoverColorPalette.slice(0, diseaseLabels.length),
+            borderWidth: 1,
+            borderColor: 'white',
+            borderRadius: 4
           }]
         },
         options: {
           responsive: true,
+          maintainAspectRatio: false,
           scales: {
             y: {
               beginAtZero: true,
-              max: 100
+              max: 100,
+              grid: {
+                color: 'rgba(0, 0, 0, 0.05)'
+              },
+              ticks: {
+                callback: function(value) {
+                  return value + '%';
+                }
+              }
+            },
+            x: {
+              grid: {
+                display: false
+              }
             }
           },
           plugins: {
             title: {
               display: true,
-              text: 'Average Confidence by Disease'
+              text: 'Average Confidence by Disease',
+              font: {
+                size: 16,
+                weight: 'bold'
+              },
+              padding: {
+                top: 10,
+                bottom: 15
+              }
+            },
+            tooltip: {
+              backgroundColor: 'rgba(0, 0, 0, 0.7)',
+              padding: 12,
+              callbacks: {
+                label: function(context) {
+                  return `Confidence: ${context.raw}%`;
+                }
+              }
+            },
+            legend: {
+              display: false
             }
+          },
+          animation: {
+            duration: 1500,
+            easing: 'easeOutQuart'
           }
         }
       });
@@ -142,25 +241,73 @@ const DashboardCharts = ({ predictions, stats }) => {
           datasets: [{
             label: 'Number of Predictions',
             data: timeCounts,
-            borderColor: '#4BC0C0',
-            tension: 0.1,
-            fill: false
+            borderColor: 'rgba(75, 192, 192, 1)',
+            backgroundColor: 'rgba(75, 192, 192, 0.1)',
+            tension: 0.3,
+            fill: true,
+            pointRadius: 4,
+            pointBackgroundColor: 'rgba(75, 192, 192, 1)',
+            pointBorderColor: 'white',
+            pointBorderWidth: 2,
+            pointHoverRadius: 6,
+            pointHoverBackgroundColor: 'white',
+            pointHoverBorderColor: 'rgba(75, 192, 192, 1)',
+            pointHoverBorderWidth: 2
           }]
         },
         options: {
           responsive: true,
+          maintainAspectRatio: false,
           scales: {
             y: {
               beginAtZero: true,
               ticks: {
-                precision: 0
+                precision: 0,
+                stepSize: 1
+              },
+              grid: {
+                color: 'rgba(0, 0, 0, 0.05)'
+              }
+            },
+            x: {
+              grid: {
+                color: 'rgba(0, 0, 0, 0.05)'
               }
             }
           },
           plugins: {
             title: {
               display: true,
-              text: 'Prediction Activity Over Time'
+              text: 'Prediction Activity Over Time',
+              font: {
+                size: 16,
+                weight: 'bold'
+              },
+              padding: {
+                top: 10,
+                bottom: 15
+              }
+            },
+            tooltip: {
+              backgroundColor: 'rgba(0, 0, 0, 0.7)',
+              padding: 12,
+              intersect: false,
+              mode: 'index'
+            },
+            legend: {
+              labels: {
+                usePointStyle: true,
+                pointStyle: 'circle'
+              }
+            }
+          },
+          animation: {
+            duration: 2000,
+            easing: 'easeOutQuart'
+          },
+          elements: {
+            line: {
+              borderWidth: 3
             }
           }
         }
@@ -171,31 +318,49 @@ const DashboardCharts = ({ predictions, stats }) => {
   return (
     <div className="charts-grid">
       <div className="chart-card">
-        <canvas ref={pieChartRef}></canvas>
+        <div className="chart-container">
+          <canvas ref={pieChartRef}></canvas>
+        </div>
       </div>
       
       <div className="chart-card">
-        <canvas ref={barChartRef}></canvas>
+        <div className="chart-container">
+          <canvas ref={barChartRef}></canvas>
+        </div>
       </div>
       
       <div className="chart-card full-width">
-        <canvas ref={lineChartRef}></canvas>
+        <div className="chart-container">
+          <canvas ref={lineChartRef}></canvas>
+        </div>
       </div>
 
       <style jsx>{`
         .charts-grid {
           display: grid;
           grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
-          gap: 20px;
-          margin-bottom: 20px;
+          gap: 25px;
+          margin-bottom: 30px;
         }
         
         .chart-card {
           background: white;
-          border-radius: 8px;
+          border-radius: 12px;
           padding: 20px;
-          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-          height: 350px;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+          height: 380px;
+          transition: all 0.3s ease;
+        }
+        
+        .chart-card:hover {
+          box-shadow: 0 6px 25px rgba(0, 0, 0, 0.12);
+          transform: translateY(-5px);
+        }
+        
+        .chart-container {
+          position: relative;
+          height: 100%;
+          width: 100%;
         }
         
         .full-width {
@@ -208,7 +373,7 @@ const DashboardCharts = ({ predictions, stats }) => {
           }
           
           .chart-card {
-            height: 300px;
+            height: 320px;
           }
         }
       `}</style>
