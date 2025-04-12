@@ -173,9 +173,14 @@ const ChatbotPage = () => {
       </Head>
 
       <header className={styles.header}>
-        <Link href="/">
-          <button className={styles.backButton}>Back to Home</button>
-        </Link>
+        <div>
+          <Link href="/">
+            <button className={styles.backButton}>Back to Home</button>
+          </Link>
+          <Link href="/dashboard">
+            <button className={styles.backButton} style={{ background: '#9b59b6' }}>View Dashboard</button>
+          </Link>
+        </div>
         <h1>Crop Care Chat Assistant</h1>
         <select 
           value={selectedLanguage} 

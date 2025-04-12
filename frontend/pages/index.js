@@ -173,6 +173,15 @@ export default function Home() {
               </p>
             </div>
           </Link>
+
+          <Link href="/dashboard">
+            <div className="card">
+              <h2>View Dashboard &rarr;</h2>
+              <p>
+                Visualize disease detection statistics and trends with interactive charts.
+              </p>
+            </div>
+          </Link>
         </div>
 
         {showChatbot && (

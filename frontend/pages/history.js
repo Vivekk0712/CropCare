@@ -84,11 +84,19 @@ export default function History() {
       <h1 className="main-heading">Prediction History</h1>
       
       <div className="card" style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Link href="/">
-          <span className="btn" style={{ display: 'inline-block', cursor: 'pointer' }}>
-            Back to Image Upload
-          </span>
-        </Link>
+        <div>
+          <Link href="/">
+            <span className="btn" style={{ display: 'inline-block', cursor: 'pointer', marginRight: '15px' }}>
+              Back to Image Upload
+            </span>
+          </Link>
+          
+          <Link href="/dashboard">
+            <span className="btn" style={{ display: 'inline-block', cursor: 'pointer', background: '#9b59b6' }}>
+              View Dashboard
+            </span>
+          </Link>
+        </div>
         
         <button 
           onClick={refreshHistory} 
