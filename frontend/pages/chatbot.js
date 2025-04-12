@@ -9,6 +9,11 @@ const ChatbotPage = () => {
   const [input, setInput] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState('en-US');
+  const [showDiseases, setShowDiseases] = useState(false);
+  const [diseases, setDiseases] = useState([]);
+  const [loadingDiseases, setLoadingDiseases] = useState(false);
+  const [selectedDisease, setSelectedDisease] = useState(null);
+  const [diseaseInfo, setDiseaseInfo] = useState(null);
   const messagesEndRef = useRef(null);
   const audioRef = useRef(null);
 
@@ -82,6 +87,47 @@ const ChatbotPage = () => {
     }
   };
 
+  const loadAllDiseases = async () => {
+    setLoadingDiseases(true);
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+      const response = await axios.get(`${backendUrl}/disease_info`, {
+        params: { format: 'keys' }
+      });
+      
+      if (response.data.success) {
+        setDiseases(response.data.diseases.sort());
+        setShowDiseases(true);
+      } else {
+        console.error('Failed to load diseases:', response.data.error);
+      }
+    } catch (error) {
+      console.error('Error loading diseases:', error);
+    } finally {
+      setLoadingDiseases(false);
+    }
+  };
+
+  const loadDiseaseInfo = async (disease) => {
+    setSelectedDisease(disease);
+    setDiseaseInfo(null);
+    
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+      const response = await axios.get(`${backendUrl}/disease_info`, {
+        params: { disease }
+      });
+      
+      if (response.data.success) {
+        setDiseaseInfo(response.data.info);
+      } else {
+        console.error('Failed to load disease info:', response.data.error);
+      }
+    } catch (error) {
+      console.error('Error loading disease info:', error);
+    }
+  };
+
   const startListening = () => {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
       alert('Speech recognition is not supported in your browser. Try Chrome or Edge.');
@@ -145,40 +191,97 @@ const ChatbotPage = () => {
         </select>
       </header>
 
-      <div className={styles.chatContainer}>
-        <div className={styles.chatMessages}>
-          {messages.map((message, index) => (
-            <div 
-              key={index} 
-              className={`${styles.message} ${
-                message.sender === 'user' ? styles.userMessage : styles.botMessage
-              }`}
+      <div className={styles.pageContent}>
+        <div className={styles.chatContainer}>
+          <div className={styles.chatMessages}>
+            {messages.map((message, index) => (
+              <div 
+                key={index} 
+                className={`${styles.message} ${
+                  message.sender === 'user' ? styles.userMessage : styles.botMessage
+                }`}
+              >
+                {message.text}
+              </div>
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+
+          <form onSubmit={handleSubmit} className={styles.inputForm}>
+            <input
+              type="text"
+              value={input}
+              onChange={handleInputChange}
+              placeholder="Ask about plant diseases, treatments, etc..."
+              className={styles.textInput}
+            />
+            <button type="submit" className={styles.sendButton}>
+              Send
+            </button>
+            <button 
+              type="button" 
+              onClick={startListening} 
+              className={`${styles.micButton} ${isListening ? styles.listening : ''}`}
             >
-              {message.text}
-            </div>
-          ))}
-          <div ref={messagesEndRef} />
+              {isListening ? 'Listening...' : '🎤'}
+            </button>
+          </form>
         </div>
 
-        <form onSubmit={handleSubmit} className={styles.inputForm}>
-          <input
-            type="text"
-            value={input}
-            onChange={handleInputChange}
-            placeholder="Ask about plant diseases, treatments, etc..."
-            className={styles.textInput}
-          />
-          <button type="submit" className={styles.sendButton}>
-            Send
-          </button>
-          <button 
-            type="button" 
-            onClick={startListening} 
-            className={`${styles.micButton} ${isListening ? styles.listening : ''}`}
-          >
-            {isListening ? 'Listening...' : '🎤'}
-          </button>
-        </form>
+        <div className={styles.diseaseLibrary}>
+          <div className={styles.libraryHeader}>
+            <h2>Disease Treatment Library</h2>
+            <button 
+              onClick={loadAllDiseases} 
+              disabled={loadingDiseases}
+              className={styles.loadButton}
+            >
+              {loadingDiseases ? 'Loading...' : (showDiseases ? 'Refresh' : 'View All Diseases')}
+            </button>
+          </div>
+
+          {showDiseases && (
+            <div className={styles.diseasesContainer}>
+              <div className={styles.diseasesList}>
+                {diseases.map(disease => (
+                  <div 
+                    key={disease}
+                    className={`${styles.diseaseItem} ${selectedDisease === disease ? styles.selected : ''}`}
+                    onClick={() => loadDiseaseInfo(disease)}
+                  >
+                    {disease.replace(/_/g, ' ')}
+                  </div>
+                ))}
+              </div>
+
+              {selectedDisease && diseaseInfo && (
+                <div className={styles.diseaseDetails}>
+                  <h3>{diseaseInfo.name}</h3>
+                  <div className={styles.infoSection}>
+                    <h4>Description</h4>
+                    <p>{diseaseInfo.description}</p>
+                  </div>
+                  <div className={styles.infoSection}>
+                    <h4>Symptoms</h4>
+                    <p>{diseaseInfo.symptoms}</p>
+                  </div>
+                  <div className={styles.infoSection}>
+                    <h4>Causes</h4>
+                    <p>{diseaseInfo.causes}</p>
+                  </div>
+                  <div className={styles.infoSection}>
+                    <h4>Treatment</h4>
+                    <p>{diseaseInfo.treatment}</p>
+                  </div>
+                  <div className={styles.infoSection}>
+                    <h4>Prevention</h4>
+                    <p>{diseaseInfo.prevention}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <audio ref={audioRef} hidden />
@@ -189,6 +292,145 @@ const ChatbotPage = () => {
           You can also try voice input by clicking the microphone icon.
         </p>
       </footer>
+
+      <style jsx>{`
+        .pageContent {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+          width: 100%;
+          max-width: 1200px;
+          margin: 0 auto;
+        }
+
+        @media (min-width: 768px) {
+          .pageContent {
+            flex-direction: row;
+          }
+
+          .chatContainer {
+            flex: 1;
+          }
+
+          .diseaseLibrary {
+            flex: 1;
+            max-width: 500px;
+          }
+        }
+
+        .diseaseLibrary {
+          background: white;
+          border-radius: 8px;
+          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+          padding: 15px;
+        }
+
+        .libraryHeader {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 15px;
+        }
+
+        .libraryHeader h2 {
+          margin: 0;
+          font-size: 1.2rem;
+          color: #333;
+        }
+
+        .loadButton {
+          background-color: #3498db;
+          color: white;
+          border: none;
+          padding: 8px 15px;
+          border-radius: 4px;
+          cursor: pointer;
+        }
+
+        .loadButton:disabled {
+          background-color: #95a5a6;
+          cursor: not-allowed;
+        }
+
+        .diseasesContainer {
+          display: flex;
+          flex-direction: column;
+        }
+
+        @media (min-width: 992px) {
+          .diseasesContainer {
+            flex-direction: row;
+            gap: 15px;
+          }
+
+          .diseasesList {
+            width: 35%;
+            overflow-y: auto;
+            max-height: 500px;
+          }
+
+          .diseaseDetails {
+            width: 65%;
+          }
+        }
+
+        .diseasesList {
+          border: 1px solid #eee;
+          border-radius: 4px;
+          max-height: 200px;
+          overflow-y: auto;
+          margin-bottom: 15px;
+        }
+
+        @media (min-width: 992px) {
+          .diseasesList {
+            margin-bottom: 0;
+          }
+        }
+
+        .diseaseItem {
+          padding: 8px 12px;
+          border-bottom: 1px solid #eee;
+          cursor: pointer;
+          text-transform: capitalize;
+        }
+
+        .diseaseItem:hover {
+          background-color: #f5f5f5;
+        }
+
+        .diseaseItem.selected {
+          background-color: #e1f0fa;
+          border-left: 3px solid #3498db;
+        }
+
+        .diseaseDetails {
+          padding: 10px;
+          border: 1px solid #eee;
+          border-radius: 4px;
+        }
+
+        .diseaseDetails h3 {
+          margin-top: 0;
+          color: #3498db;
+          border-bottom: 1px solid #eee;
+          padding-bottom: 8px;
+        }
+
+        .infoSection {
+          margin-bottom: 15px;
+        }
+
+        .infoSection h4 {
+          color: #2c3e50;
+          margin-bottom: 5px;
+        }
+
+        .infoSection p {
+          margin-top: 0;
+          line-height: 1.5;
+        }
+      `}</style>
     </div>
   );
 };

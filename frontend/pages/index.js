@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import axios from 'axios';
+import TreatmentDetails from '../components/TreatmentDetails';
 
 export default function Home() {
   const [showChatbot, setShowChatbot] = useState(false);
@@ -123,6 +124,22 @@ export default function Home() {
                 <h3>Analysis Result:</h3>
                 <p className="disease-name">{prediction.name}</p>
                 <p className="confidence">Confidence: {prediction.value}%</p>
+                
+                {/* Show treatment information directly if available */}
+                {prediction.treatment && (
+                  <div className="treatment-container">
+                    <h3>Recommended Treatment</h3>
+                    <div className="treatment-content">
+                      <p>{prediction.treatment}</p>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Otherwise use the TreatmentDetails component with HuggingFace */}
+                {!prediction.treatment && (
+                  <TreatmentDetails diseaseName={prediction.name} />
+                )}
+                
                 <Link href="/chatbot">
                   <button className="info-button">
                     Get more information
@@ -393,6 +410,23 @@ export default function Home() {
           flex: 1;
           border: none;
           width: 100%;
+        }
+
+        .treatment-container {
+          margin-top: 1rem;
+          padding: 1rem;
+          border-radius: 5px;
+          background-color: #f0f8ff;
+          border: 1px solid #d1e8ff;
+        }
+        .treatment-content {
+          margin-top: 0.5rem;
+          line-height: 1.5;
+        }
+        .treatment-container h3 {
+          margin: 0;
+          color: #0070f3;
+          font-size: 1.1rem;
         }
 
         @media (max-width: 600px) {
