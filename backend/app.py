@@ -19,27 +19,9 @@ from nltk.stem import WordNetLemmatizer
 import nltk
 import requests
 import time
+import groq
 
-# Download NLTK resources
-try:
-    # Specify the download directory to ensure permissions
-    nltk_data_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'nltk_data')
-    os.makedirs(nltk_data_path, exist_ok=True)
-    
-    # Download all necessary resources with explicit path
-    nltk.download('punkt', download_dir=nltk_data_path, quiet=True)
-    nltk.download('stopwords', download_dir=nltk_data_path, quiet=True)
-    nltk.download('wordnet', download_dir=nltk_data_path, quiet=True)
-    
-    # Add the download path to NLTK's search paths
-    nltk.data.path.append(nltk_data_path)
-    
-    print(f"NLTK resources downloaded to {nltk_data_path}")
-    NLP_AVAILABLE = True
-except Exception as e:
-    print(f"Error downloading NLTK resources: {str(e)}")
-    NLP_AVAILABLE = False
-
+# Try to import Google Cloud TextToSpeech
 try:
     from google.cloud import texttospeech
     TEXT_TO_SPEECH_AVAILABLE = True
@@ -58,6 +40,9 @@ load_dotenv()
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for cross-origin requests from frontend
+
+# Set up static folder for serving TTS audio files
+app.static_folder = 'static'
 
 # Configure Clarifai API credentials
 CLARIFAI_PAT = os.environ.get("CLARIFAI_PAT")
@@ -94,6 +79,31 @@ except Exception as e:
     traceback_str = traceback.format_exc()
     print(f"Traceback: {traceback_str}")
     supabase = None
+
+# Initialize Groq client
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+groq_client = None
+GROQ_AVAILABLE = False
+GROQ_MODELS = {
+    'primary': 'llama3-70b-8192',  # Powerful primary model
+    'fallback': 'llama3-8b-8192'   # Smaller fallback model
+}
+
+if GROQ_API_KEY:
+    try:
+        groq_client = groq.Client(api_key=GROQ_API_KEY)
+        print(f"Successfully initialized Groq client with API key prefix: {GROQ_API_KEY[:5] if len(GROQ_API_KEY) > 5 else '***'}...")
+        GROQ_AVAILABLE = True
+        
+        # Log available models
+        print(f"Groq primary model: {GROQ_MODELS['primary']}")
+        print(f"Groq fallback model: {GROQ_MODELS['fallback']}")
+    except Exception as e:
+        print(f"Error initializing Groq client: {str(e)}")
+        traceback_str = traceback.format_exc()
+        print(f"Traceback: {traceback_str}")
+else:
+    print("GROQ_API_KEY environment variable is not set. Groq LLM will not be available.")
 
 # Your specific Clarifai configuration
 USER_ID = 'xv221gj2xl57'
@@ -249,189 +259,63 @@ def get_treatment_for_disease(disease_name):
     print(f"No specific treatment found for: {disease_name}")
     return f"No specific treatment information available for {disease_name}. Consult a local agricultural extension office for personalized advice based on your location and specific conditions."
 
-# Translation function
+# Function to translate text using Google Translate
 def translate_text(text, target_language):
-    """
-    Translate text using a publicly available API
-    If the API call fails, the original text is returned
-    """
-    # Extract language code from the full language tag
-    lang_code = target_language.split('-')[0]
-    
-    # Add debug output
-    print(f"*** Translation requested for text to language: {lang_code} (from {target_language}) ***")
-    
-    # If language is English, return the original text
-    if lang_code == 'en':
-        print("*** Target language is English, skipping translation ***")
+    """Translate text to the specified language"""
+    if target_language.startswith('en'):
+        # No need to translate if target is English
+        print("Target language is English, no translation needed")
         return text
-        
-    # Caching mechanism for translations
-    cache_key = f"{text}_{lang_code}"
-    # Create a translations cache if it doesn't exist
-    if not hasattr(translate_text, 'cache'):
-        translate_text.cache = {}
-        
-    # Return cached translation if available
-    if cache_key in translate_text.cache:
-        print(f"*** Using cached translation for: {cache_key[:30]}... ***")
-        return translate_text.cache[cache_key]
+    
+    # Extract just the language code if a locale is provided
+    if '-' in target_language:
+        target_language = target_language.split('-')[0]
+    
+    # Map to language codes supported by the translation API
+    language_map = {
+        'en': 'en',   # English
+        'hi': 'hi',   # Hindi
+        'te': 'te',   # Telugu
+        'ta': 'ta',   # Tamil
+        'kn': 'kn',   # Kannada
+        'ml': 'ml'    # Malayalam
+    }
+    
+    # Use mapped language code or default to original
+    target_language = language_map.get(target_language, target_language)
     
     try:
-        print(f"*** Attempting translation to {lang_code} ***")
-        # First try Google API if available (faster and more reliable)
-        api_key = os.environ.get("GOOGLE_API_KEY")
-        print(f"*** Google API key available: {api_key is not None} ***")
+        print(f"Translating text to {target_language} (length: {len(text)})")
         
-        if api_key:
-            try:
-                url = f"https://translation.googleapis.com/language/translate/v2?key={api_key}"
-                payload = {
-                    "q": text,
-                    "source": "en",
-                    "target": lang_code,
-                    "format": "text"
-                }
-                headers = {"Content-Type": "application/json"}
-                print(f"*** Making request to Google Translate API for {lang_code} ***")
-                response = requests.post(url, json=payload, headers=headers, timeout=5)
-                
-                print(f"*** Google Translate API response status: {response.status_code} ***")
-                if response.status_code == 200:
-                    data = response.json()
-                    print(f"*** Google Translate API response: {json.dumps(data)[:100]}... ***")
-                    if 'data' in data and 'translations' in data['data'] and len(data['data']['translations']) > 0:
-                        translated_text = data['data']['translations'][0]['translatedText']
-                        # Cache the translation
-                        translate_text.cache[cache_key] = translated_text
-                        print(f"*** Successfully translated with Google API to {lang_code} ***")
-                        return translated_text
-                    else:
-                        print(f"*** Unexpected Google Translate API response structure: {data} ***")
-                else:
-                    print(f"*** Google Translate API error: {response.status_code} - {response.text} ***")
-            except Exception as e:
-                print(f"*** Error using Google Translate API: {str(e)} ***")
+        # Use Google Translate API
+        url = "https://translate.googleapis.com/translate_a/single"
+        params = {
+            "client": "gtx",
+            "sl": "auto",  # Source language (auto-detect)
+            "tl": target_language,  # Target language
+            "dt": "t",  # Return text
+            "q": text
+        }
         
-        # Fallback to multiple free translation services
-        try:
-            # First try LibreTranslate
-            print(f"*** Falling back to LibreTranslate for {lang_code} ***")
-            libre_url = "https://translate.argosopentech.com/translate"
-            libre_payload = {
-                "q": text,
-                "source": "en",
-                "target": lang_code
-            }
-            libre_headers = {"Content-Type": "application/json"}
-            libre_response = requests.post(libre_url, json=libre_payload, headers=libre_headers, timeout=10)
+        response = requests.get(url, params=params)
+        if response.status_code != 200:
+            print(f"Translation API error: {response.status_code}")
+            return text
             
-            print(f"*** LibreTranslate API response status: {libre_response.status_code} ***")
-            if libre_response.status_code == 200:
-                libre_result = libre_response.json()
-                translated_text = libre_result.get("translatedText", text)
-                # Cache the translation
-                translate_text.cache[cache_key] = translated_text
-                print(f"*** Successfully translated with LibreTranslate to {lang_code} ***")
-                return translated_text
-            else:
-                print(f"*** LibreTranslate API error: {libre_response.status_code} - {libre_response.text} ***")
-                
-            # Second fallback - try Lingva Translate (alternative free service)
-            print(f"*** Trying Lingva Translate for {lang_code} ***")
-            lingva_url = f"https://lingva.ml/api/v1/en/{lang_code}/{text}"
-            lingva_response = requests.get(lingva_url, timeout=10)
-            
-            if lingva_response.status_code == 200:
-                lingva_data = lingva_response.json()
-                if 'translation' in lingva_data:
-                    translated_text = lingva_data['translation']
-                    # Cache the translation
-                    translate_text.cache[cache_key] = translated_text
-                    print(f"*** Successfully translated with Lingva to {lang_code} ***")
-                    return translated_text
-            
-            # All translation services failed, use a basic dictionary for common languages and terms
-            print("*** All translation services failed, using basic dictionary ***")
-            if lang_code == 'hi':  # Hindi
-                basic_translations = {
-                    "Hello!": "नमस्ते!",
-                    "How can I help you": "मैं आपकी कैसे मदद कर सकता हूँ",
-                    "plant": "पौधा",
-                    "disease": "रोग",
-                    "treatment": "उपचार",
-                    "prevention": "रोकथाम",
-                    "symptoms": "लक्षण"
-                }
-                # Apply simple replacements
-                translated_text = text
-                for en, hi in basic_translations.items():
-                    translated_text = translated_text.replace(en, hi)
-                if translated_text != text:
-                    # Some translations were applied
-                    translate_text.cache[cache_key] = translated_text
-                    return translated_text
+        # Parse the response (it comes in a nested list structure)
+        result = response.json()
         
-        except Exception as e:
-            print(f"*** Error in translation fallbacks: {str(e)} ***")
+        # Extract all translated parts and join them
+        translated_text = ""
+        for part in result[0]:
+            if part[0]:
+                translated_text += part[0]
         
-        return text
+        print(f"Translation successful: {translated_text[:100]}...")
+        return translated_text
     except Exception as e:
         print(f"*** Translation error: {str(e)} ***")
         return text
-
-# NLP preprocessing function
-def preprocess_text(text):
-    """Process text to extract relevant features"""
-    if not NLP_AVAILABLE:
-        print("NLP is not available, returning lowercased text only")
-        return text.lower()
-    
-    try:
-        # Check if NLTK data is available before proceeding
-        try:
-            # Try to get stop words as a test
-            nltk.data.find('corpora/stopwords')
-            print("NLTK data accessible")
-        except LookupError:
-            print("NLTK data not accessible, downloading now...")
-            # Path to download data
-            nltk_data_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'nltk_data')
-            os.makedirs(nltk_data_path, exist_ok=True)
-            
-            # Download necessary resources
-            nltk.download('punkt', download_dir=nltk_data_path, quiet=True)
-            nltk.download('stopwords', download_dir=nltk_data_path, quiet=True)
-            nltk.download('wordnet', download_dir=nltk_data_path, quiet=True)
-            
-            # Add to path
-            nltk.data.path.append(nltk_data_path)
-            print(f"NLTK data downloaded to {nltk_data_path}")
-        
-        # Now process the text
-        try:
-            # Tokenize
-            tokens = word_tokenize(text.lower())
-            
-            # Remove stopwords and punctuation
-            stop_words = set(stopwords.words('english'))
-            tokens = [word for word in tokens if word.isalnum() and word not in stop_words]
-            
-            # Lemmatize
-            lemmatizer = WordNetLemmatizer()
-            tokens = [lemmatizer.lemmatize(word) for word in tokens]
-            
-            processed_text = ' '.join(tokens)
-            print(f"Successfully preprocessed text: '{text[:30]}...' to '{processed_text[:30]}...'")
-            return processed_text
-        except Exception as processing_err:
-            print(f"Error during text processing: {str(processing_err)}")
-            return text.lower()
-            
-    except Exception as e:
-        print(f"Error in NLP preprocessing: {str(e)}")
-        print(traceback.format_exc())
-        return text.lower()
 
 @app.route("/predict", methods=["POST"])
 def predict():
@@ -906,17 +790,18 @@ plant_disease_data = {
 
 # Get all disease keys for treatment lookup
 def get_all_treatment_disease_keys():
-    """Get all available disease keys from both enhanced and basic treatments"""
+    """Get all disease keys from treatments and basic_treatments dictionaries"""
     global treatments, basic_treatments
     
-    # Start with enhanced treatments dict
-    all_keys = list(treatments.keys())
+    all_keys = []
     
-    # Add basic treatments
-    all_keys.extend(list(basic_treatments.keys()))
+    # Add keys from detailed treatments
+    for k in treatments.keys():
+        all_keys.append(k)
     
-    # Add plant_disease_data keys
-    all_keys.extend([disease.replace('_', '___') for disease in plant_disease_data.keys()])
+    # Add keys from basic treatments
+    for k in basic_treatments.keys():
+        all_keys.append(k)
     
     # Make list unique
     return list(set(all_keys))
@@ -924,292 +809,137 @@ def get_all_treatment_disease_keys():
 # Enhanced chatbot response function
 def process_message(message, language_code='en-US'):
     """
-    Process a message and return a response based on pattern matching and NLP.
+    Process a message and get a response using Groq LLM.
     Supports multiple languages through translation.
+    
+    Returns:
+        tuple: (response_text, model_used)
     """
-    global supabase  # Add global reference
+    global supabase, GROQ_AVAILABLE  
     
     print(f"------ Processing message in {language_code} ------")
     original_message = message
+    model_used = None
     
     # Check if language is English
     is_english = language_code.startswith('en')
     print(f"Is English language: {is_english}")
     
     # Translate non-English input to English for processing
+    translated_message = message
     if not is_english:
         try:
-            # Translation not needed for input in most cases as we process based on keywords
-            # but we'll log that we received a non-English message
-            print(f"Received non-English message in {language_code}")
+            print(f"Translating message from {language_code} to English for processing")
+            translated_message = translate_text(message, 'en-US')
+            print(f"Translated message: {translated_message}")
         except Exception as e:
-            print(f"Error handling non-English message: {str(e)}")
+            print(f"Error translating message to English: {str(e)}")
+            # Continue with original message if translation fails
+            translated_message = message
     
-    # Process the message with NLP if available
-    processed_message = ""
-    try:
-        processed_message = preprocess_text(message)
-        print(f"Processed message: {processed_message}")
-    except Exception as nlp_error:
-        print(f"Error in NLP preprocessing:")
-        print(traceback.format_exc())
-        # Fall back to lowercase version
-        processed_message = message.lower()
+    # Get disease info for context
+    disease_keys = get_all_treatment_disease_keys()
+    diseases_context = ", ".join(disease_keys[:20])
     
-    # Initialize response
-    response = ""
-    
-    # First check if it's a direct treatment query for a specific disease from the predict API
-    # This pattern handles messages like "What is the treatment for Apple___Apple_scab?"
-    direct_treatment_match = re.search(r"treatment for ([A-Za-z0-9_]+(?:___[A-Za-z0-9_]+)?)", processed_message, re.IGNORECASE)
-    if direct_treatment_match:
-        disease_with_underscores = direct_treatment_match.group(1).strip()
-        print(f"Direct treatment query detected for: {disease_with_underscores}")
-        
-        # Special case for Applescab
-        if disease_with_underscores.lower() == "applescab":
-            print("Special case: Direct query for Applescab, returning Apple___Apple_scab treatment")
-            return get_treatment_for_disease("Apple___Apple_scab")
-        
-        # Try direct match first
-        treatment_info = get_treatment_for_disease(disease_with_underscores)
-        if treatment_info and "No specific treatment information available" not in treatment_info:
-            print(f"Found direct treatment match for {disease_with_underscores}")
-            print(f"Returning treatment info: {treatment_info[:100]}...")
-            return treatment_info
-        
-        # Try processing the disease name
-        disease_name_clean = disease_with_underscores.replace('___', ' ').replace('_', ' ').lower()
-        print(f"Searching for treatment using cleaned name: {disease_name_clean}")
-        
-        # Try even more variations
-        variations = [
-            disease_with_underscores,
-            disease_with_underscores.replace('___', '_'),
-            disease_with_underscores.lower(),
-            disease_with_underscores.replace('___', '_').lower(),
-            disease_name_clean
-        ]
-        
-        for variation in variations:
-            print(f"Trying variation: {variation}")
-            treatment = get_treatment_for_disease(variation)
-            if treatment and "No specific treatment information available" not in treatment:
-                print(f"Found treatment for variation {variation}")
-                print(f"Returning treatment info: {treatment[:100]}...")
-                return treatment
-    
-    # Extract potential disease name from the message
-    disease_names = [
-        ("apple scab", "apple_scab"),
-        ("apple___apple_scab", "apple_scab"),
-        ("applescab", "apple_scab"),
-        ("apple scab", "Apple___Apple_scab"),
-        ("applescab", "Apple___Apple_scab"),
-        ("bacterial spot", "bacterial_spot"),
-        ("bacteria___bacterial_spot", "bacterial_spot"),
-        ("black spot", "black_spot"),
-        ("black_rot", "black_rot"),
-        ("early blight", "early_blight"),
-        ("late blight", "late_blight"),
-        ("leaf curl", "leaf_curl"),
-        ("powdery mildew", "powdery_mildew"),
-        ("rust", "rust"),
-        ("citrus greening", "citrus_greening"),
-        ("bacterialspot", "bacterial_spot"),
-        ("blackspot", "black_spot"),
-        ("earlyblight", "early_blight"),
-        ("lateblight", "late_blight"),
-        ("leafcurl", "leaf_curl"),
-        ("powderymildew", "powdery_mildew"),
-        ("citrusgreening", "citrus_greening")
-    ]
-    
-    identified_disease = None
-    matched_key = None
-    for name, key in disease_names:
-        if name.lower() in processed_message.lower():
-            identified_disease = key
-            matched_key = name.lower()
-            print(f"Identified disease: {key} from text match: {name}")
-            break
-    
-    # Check for disease patterns in original formats (like Apple___Apple_scab)
-    if not identified_disease:
-        for disease_key in get_all_treatment_disease_keys():
-            disease_variations = [
-                disease_key,
-                disease_key.replace('___', ' '),
-                disease_key.replace('_', ' '),
-                disease_key.lower(),
-                disease_key.replace('___', ' ').lower(),
-                disease_key.replace('_', ' ').lower()
-            ]
-            
-            for variation in disease_variations:
-                if variation.lower() in processed_message.lower():
-                    identified_disease = disease_key
-                    matched_key = variation
-                    print(f"Found disease using variation {variation} -> {disease_key}")
-                    break
-            
-            if identified_disease:
-                break
-    
-    # Check for intents in the message
-    intent = None
-    if any(word in processed_message for word in ["what", "describe", "explain", "tell me about", "what is", "what are"]):
-        intent = "description"
-    elif any(word in processed_message for word in ["cause", "why", "how does", "reason"]):
-        intent = "causes"
-    elif any(word in processed_message for word in ["symptom", "sign", "identify", "look like", "appears"]):
-        intent = "symptoms"
-    elif any(word in processed_message for word in ["treat", "cure", "fix", "heal", "remedy", "solution", "treatment", "medication", "combat", "control", "manage"]):
-        intent = "treatment"
-    elif any(word in processed_message for word in ["prevent", "avoid", "stop", "protect"]):
-        intent = "prevention"
-    
-    if intent:
-        print(f"Identified intent: {intent}")
-    
-    # Check if this is specifically a treatment query
-    if "treatment" in processed_message or "cure" in processed_message or "how to treat" in processed_message:
-        intent = "treatment"
-        print("Treatment intent detected from keywords")
-    
-    # Get the normalized disease key for plant_disease_data lookup
-    normalized_disease_key = identified_disease
-    if identified_disease:
-        # Convert to the format used in plant_disease_data if needed
-        # e.g., Apple___Apple_scab -> apple_scab
-        if '___' in identified_disease:
-            # Try to extract the disease part after the crop type
-            _, disease_part = identified_disease.split('___', 1)
-            normalized_disease_key = disease_part.lower()
-        elif identified_disease.endswith('_scab') or identified_disease.endswith('_spot') or identified_disease.endswith('_blight'):
-            # Already in a good format
-            normalized_disease_key = identified_disease.lower()
-        else:
-            # Simple normalization - lowercase and replace ___ with _
-            normalized_disease_key = identified_disease.lower().replace('___', '_')
-        
-        # Check if we need to normalize further to match plant_disease_data keys
-        if normalized_disease_key not in plant_disease_data:
-            # Try simple key mapping
-            simple_mappings = {
-                'apple_scab': 'apple_scab',
-                'apple___apple_scab': 'apple_scab',
-                'black_rot': 'black_spot',  # Map black rot to black spot as fallback
-                'bacterial_leaf_spot': 'bacterial_spot'
-            }
-            
-            if normalized_disease_key in simple_mappings:
-                print(f"Mapping normalized key from {normalized_disease_key} to {simple_mappings[normalized_disease_key]}")
-                normalized_disease_key = simple_mappings[normalized_disease_key]
-        
-        print(f"Using normalized disease key: {normalized_disease_key} for lookup")
-    
-    # Generate response based on intent and identified disease
-    if normalized_disease_key and intent and normalized_disease_key in plant_disease_data:
-        print(f"Generating response for disease {normalized_disease_key} with intent {intent}")
-        disease_info = plant_disease_data[normalized_disease_key]
-        if intent in disease_info:
-            response = disease_info[intent]
-            print(f"Response for {intent}: {response[:100]}...")
-        else:
-            # Fallback to description if the specific intent is not available
-            response = disease_info["description"]
-    
-    # If only disease is identified but no specific intent
-    elif normalized_disease_key and normalized_disease_key in plant_disease_data:
-        disease_info = plant_disease_data[normalized_disease_key]
-        response = (f"{disease_info['name']}: {disease_info['description']} "
-                  f"Symptoms include {disease_info['symptoms']} "
-                  f"Treatment: {disease_info['treatment']}")
-    
-    # Special cases for specific diseases
-    elif "applescab" in processed_message.lower() or "apple scab" in processed_message.lower():
-        print("Special case detected: Apple Scab")
-        treatment = get_treatment_for_disease("Apple___Apple_scab")
-        if treatment:
-            print(f"Returning special case treatment: {treatment[:100]}...")
-            return treatment
-        
-    elif "tomato" in processed_message.lower() and ("early" in processed_message.lower() and "blight" in processed_message.lower()):
-        print("Special case detected: Tomato Early Blight")
-        treatment = get_treatment_for_disease("Tomato___Early_blight")
-        if treatment:
-            print(f"Returning special case treatment: {treatment[:100]}...")
-            return treatment
-    
-    # For any other disease mentioned, try to get treatment information
-    elif identified_disease and not response:
-        print(f"Attempting to get treatment for {identified_disease}")
-        treatment = get_treatment_for_disease(identified_disease)
-        if treatment and "No specific treatment information available" not in treatment:
-            print(f"Found treatment for {identified_disease}")
-            response = treatment
-    
-    # General queries about treatments or prevention
-    elif "treatment" in processed_message or "remedy" in processed_message:
-        response = ("For treating plant diseases: 1) Remove infected parts, 2) Improve air circulation, "
-                  "3) Apply appropriate fungicides, 4) Ensure proper watering, and 5) Add mulch to prevent soil splashing. "
-                  "Always follow product label instructions.")
-    
-    elif "prevention" in processed_message or "prevent" in processed_message:
-        response = ("To prevent crop diseases: 1) Choose resistant varieties, 2) Ensure proper spacing, "
-                  "3) Water at the base of plants, 4) Practice crop rotation, 5) Remove diseased plant material, "
-                  "and 6) Apply organic or chemical preventatives as needed.")
-    
-    # Fertilizer questions
-    elif any(word in processed_message for word in ["fertilizer", "fertilize", "nutrients", "feed"]):
-        response = ("For crop nutrition, consider using balanced NPK fertilizers based on soil tests. "
-                  "Organic options include compost, manure, and specific plant-based fertilizers.")
-    
-    # Pest questions
-    elif any(word in processed_message for word in ["pest", "insect", "bug", "aphid", "mite"]):
-        response = ("To control garden pests: 1) Identify the pest correctly, 2) Start with the least toxic methods, "
-                  "3) Consider beneficial insects, 4) Use insecticidal soaps or neem oil for soft-bodied pests, "
-                  "5) Use targeted treatments for specific pests.")
-    
-    # Watering questions
-    elif any(word in processed_message for word in ["water", "irrigation", "moisture", "dry"]):
-        response = ("Proper watering is crucial: 1) Water deeply and infrequently to encourage deep roots, "
-                  "2) Water at the base to keep foliage dry, 3) Water in the morning, "
-                  "4) Use drip irrigation when possible, 5) Adjust based on weather conditions and plant needs.")
-    
-    # Soil questions
-    elif any(word in processed_message for word in ["soil", "compost", "mulch", "dirt"]):
-        response = ("Healthy soil is the foundation for healthy plants: 1) Add organic matter regularly, "
-                  "2) Test soil pH and nutrients, 3) Use appropriate amendments, "
-                  "4) Apply mulch to conserve moisture and suppress weeds, 5) Avoid compacting the soil.")
-    
-    # Greeting
-    elif any(word in processed_message for word in ["hello", "hi", "hey", "greetings"]):
-        response = "Hello! I'm your Crop Care Assistant. How can I help you with your plants today?"
-    
-    # Default response if no specific pattern is matched
-    if not response:
-        response = ("I'm here to help with plant disease questions. You can ask about specific diseases like 'apple scab', "
-                   "'late blight', or 'powdery mildew', as well as prevention methods, or treatment options. "
-                   "What would you like to know about crop care?")
+    # Create system prompt with agricultural knowledge
+    system_prompt = f"""You are an expert agricultural assistant specializing in crop diseases and treatments.
+Your purpose is to help farmers identify, prevent, and treat plant diseases.
 
-    print(f"Generated English response: {response[:100]}...")
+Available information about crop diseases: {diseases_context} and more.
+
+When providing treatment recommendations:
+1. Start with cultural practices (like pruning, spacing, watering techniques)
+2. Follow with organic options when available
+3. Include conventional chemical treatments as appropriate
+4. Always emphasize safety precautions
+
+Keep responses concise, practical and farmer-friendly.
+For disease-specific questions, include information about symptoms, causes, and prevention.
+"""
+
+    response = None
     
-    # Translate response if not in English
-    if not is_english:
-        print(f"Translating response to {language_code}...")
-        original_response = response
-        response = translate_text(response, language_code)
-        
-        # Verify if translation worked (simple check if the text changed)
-        if response == original_response:
-            print("WARNING: Translation may not have worked. Response unchanged.")
-        else:
-            print(f"Translated response: {response[:100]}...")
+    # Use Groq LLM for response generation
+    if GROQ_AVAILABLE:
+        try:
+            # Try primary model first
+            current_model = GROQ_MODELS['primary']
+            model_used = current_model
+            print(f"Calling Groq LLM API with model: {current_model}...")
+            
+            chat_completion = groq_client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": translated_message}
+                ],
+                model=current_model,
+                temperature=0.5,
+                max_tokens=800,
+                top_p=1,
+                stream=False
+            )
+            
+            # Extract and process the response
+            response = chat_completion.choices[0].message.content
+            print(f"Received response from Groq {current_model} (length: {len(response)})")
+            
+        except Exception as primary_error:
+            print(f"Error calling Groq primary model: {str(primary_error)}")
+            print("Attempting to use fallback model...")
+            
+            try:
+                # Try fallback model
+                current_model = GROQ_MODELS['fallback']
+                model_used = current_model
+                print(f"Calling Groq LLM API with fallback model: {current_model}...")
+                
+                chat_completion = groq_client.chat.completions.create(
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": translated_message}
+                    ],
+                    model=current_model,
+                    temperature=0.5,
+                    max_tokens=800,
+                    top_p=1,
+                    stream=False
+                )
+                
+                # Extract and process the response
+                response = chat_completion.choices[0].message.content
+                print(f"Received response from Groq fallback model {current_model} (length: {len(response)})")
+                
+            except Exception as fallback_error:
+                print(f"Error calling Groq fallback model: {str(fallback_error)}")
+                traceback_str = traceback.format_exc()
+                print(f"Traceback: {traceback_str}")
+                
+                # Create a simple fallback response if both models fail
+                response = "I'm sorry, I'm having trouble connecting to my knowledge base right now. Please try again in a few moments."
+                model_used = "Error"
+    else:
+        # Groq not available
+        print("Groq LLM is not available. Please check your API key.")
+        response = "I'm currently operating with limited capabilities. Please ensure Groq API is properly configured."
+        model_used = "Not Available"
+    
+    # Translate response back to original language if needed
+    if not is_english and response:
+        try:
+            print(f"Translating response to {language_code}...")
+            original_response = response
+            response = translate_text(response, language_code)
+            
+            # Verify if translation worked
+            if response == original_response:
+                print("WARNING: Translation may not have worked. Response unchanged.")
+            else:
+                print(f"Translated response: {response[:100]}...")
+        except Exception as e:
+            print(f"Error translating response: {str(e)}")
     
     print(f"------ Message processing completed ------")
-    return response
+    return response, model_used
 
 # Chatbot API endpoint
 @app.route('/chatbot', methods=['POST'])
@@ -1236,12 +966,12 @@ def process_chatbot():
             cached_response = process_chatbot.cache[cache_key]
             return jsonify(cached_response)
         
-        # Get response using our enhanced pattern matching
+        # Get response using our enhanced Groq integration
         start_time = time.time()
         print(f"Calling process_message with message and language: {language_code}")
-        response_text = process_message(user_message, language_code)
+        response_text, model_used = process_message(user_message, language_code)
         processing_time = time.time() - start_time
-        print(f"Generated response in {processing_time:.2f} seconds")
+        print(f"Generated response in {processing_time:.2f} seconds using model: {model_used}")
         print(f"Response text: {response_text[:100]}...")
         
         # Verify language - ensure non-English responses are actually translated
@@ -1266,12 +996,14 @@ def process_chatbot():
             else:
                 print("Failed to generate audio")
         
-        # Create response
+        # Create response with model info
+        powered_by = f"Groq LLM ({model_used})" if GROQ_AVAILABLE and model_used not in ["Error", "Not Available"] else "Pattern Matching (Fallback)"
         response = {
             'success': True,
             'response': response_text,
             'audioUrl': audio_url,
-            'language': language_code
+            'language': language_code,
+            'poweredBy': powered_by
         }
         
         # Cache the response

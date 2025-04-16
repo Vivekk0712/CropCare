@@ -35,6 +35,7 @@ const ChatbotMessage = ({ message, language, onResponse }) => {
   const [error, setError] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [poweredBy, setPoweredBy] = useState(null);
   const MAX_RETRIES = 2;
   const timeoutRef = useRef(null);
 
@@ -83,9 +84,14 @@ const ChatbotMessage = ({ message, language, onResponse }) => {
           setError(false);
           setRetryCount(0); // Reset retry count on success
           
+          // Save the poweredBy information if available
+          if (result.data.poweredBy) {
+            setPoweredBy(result.data.poweredBy);
+          }
+          
           // Call the callback with the response
           if (onResponse) {
-            onResponse(result.data.response, result.data.audioUrl);
+            onResponse(result.data.response, result.data.audioUrl, result.data.poweredBy);
           }
           
           // If audio URL is provided, play it
@@ -124,7 +130,7 @@ const ChatbotMessage = ({ message, language, onResponse }) => {
         const errorMessage = 'Sorry, I encountered an error. Please try again.';
         setResponse(errorMessage);
         if (onResponse) {
-          onResponse(errorMessage);
+          onResponse(errorMessage, null, "Pattern Matching (Fallback)");
         }
       }
     };
@@ -422,11 +428,11 @@ const ChatbotWidget = () => {
   };
 
   // Handle bot response
-  const handleBotResponse = (response, audioUrl, messageId) => {
+  const handleBotResponse = (response, audioUrl, messageId, poweredBy) => {
     setMessages(prev => 
       prev.map(msg => 
         msg.id === messageId 
-          ? { ...msg, message: response, audioUrl, pending: false }
+          ? { ...msg, message: response, audioUrl, poweredBy, pending: false }
           : msg
       )
     );
@@ -446,7 +452,7 @@ const ChatbotWidget = () => {
             <ChatbotMessage 
               message={msg.message} 
               language={language}
-              onResponse={(response, audioUrl) => handleBotResponse(response, audioUrl, msg.id)} 
+              onResponse={(response, audioUrl, poweredBy) => handleBotResponse(response, audioUrl, msg.id, poweredBy)} 
             />
           </div>
         ) : (
@@ -455,6 +461,16 @@ const ChatbotWidget = () => {
             {msg.audioUrl && (
               <div className="audio-controls">
                 <audio src={`${backendUrl}${msg.audioUrl}`} controls />
+              </div>
+            )}
+            {msg.poweredBy && !msg.user && !msg.isSystem && (
+              <div style={{
+                fontSize: '10px',
+                marginTop: '5px',
+                color: '#888',
+                fontStyle: 'italic'
+              }}>
+                Powered by {msg.poweredBy}
               </div>
             )}
           </div>

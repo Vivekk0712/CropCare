@@ -4,10 +4,11 @@ clarifai-grpc==9.7.0
 python-dotenv==1.0.0
 werkzeug==2.2.3
 supabase==1.0.3
-# NLP dependencies
-nltk==3.8.1
+# API and request libraries
 requests==2.28.2
-# Optional Text-to-Speech dependencies
+# Text-to-Speech dependencies
 google-cloud-texttospeech==2.25.1
 uuid==1.30
-python-dateutil==2.8.2 
+python-dateutil==2.8.2
+# Groq LLM SDK
+groq==0.4.1 
