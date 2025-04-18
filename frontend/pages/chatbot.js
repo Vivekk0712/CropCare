@@ -3,6 +3,8 @@ import axios from 'axios';
 import Head from 'next/head';
 import Link from 'next/link';
 import styles from '../styles/Chatbot.module.css';
+import withAuth from '../utils/withAuth';
+import Navbar from '../components/Navbar';
 
 const ChatbotPage = () => {
   const [messages, setMessages] = useState([]);
@@ -172,15 +174,9 @@ const ChatbotPage = () => {
         <meta name="description" content="Chat with our Crop Care Assistant" />
       </Head>
 
+      <Navbar />
+
       <header className={styles.header}>
-        <div>
-          <Link href="/">
-            <button className={styles.backButton}>Back to Home</button>
-          </Link>
-          <Link href="/dashboard">
-            <button className={styles.backButton} style={{ background: '#9b59b6' }}>View Dashboard</button>
-          </Link>
-        </div>
         <h1>Crop Care Chat Assistant</h1>
         <select 
           value={selectedLanguage} 
@@ -440,4 +436,4 @@ const ChatbotPage = () => {
   );
 };
 
-export default ChatbotPage; 
+export default withAuth(ChatbotPage); 

@@ -2,8 +2,10 @@ import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import axios from 'axios';
+import withAuth from '../utils/withAuth';
+import Navbar from '../components/Navbar';
 
-export default function History() {
+function History() {
   const [predictions, setPredictions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -81,23 +83,11 @@ export default function History() {
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
+      <Navbar />
+
       <h1 className="main-heading">Prediction History</h1>
       
-      <div className="card" style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <Link href="/">
-            <span className="btn" style={{ display: 'inline-block', cursor: 'pointer', marginRight: '15px' }}>
-              Back to Image Upload
-            </span>
-          </Link>
-          
-          <Link href="/dashboard">
-            <span className="btn" style={{ display: 'inline-block', cursor: 'pointer', background: '#9b59b6' }}>
-              View Dashboard
-            </span>
-          </Link>
-        </div>
-        
+      <div className="card" style={{ marginBottom: '20px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
         <button 
           onClick={refreshHistory} 
           className="btn" 
@@ -255,4 +245,6 @@ export default function History() {
       `}</style>
     </div>
   );
-} 
+}
+
+export default withAuth(History); 

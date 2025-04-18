@@ -3,6 +3,8 @@ import Head from 'next/head';
 import Link from 'next/link';
 import axios from 'axios';
 import dynamic from 'next/dynamic';
+import withAuth from '../utils/withAuth';
+import Navbar from '../components/Navbar';
 
 // Create component with no SSR
 const DynamicCharts = dynamic(
@@ -10,7 +12,7 @@ const DynamicCharts = dynamic(
   { ssr: false }
 );
 
-export default function Dashboard() {
+function Dashboard() {
   const [predictions, setPredictions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -162,23 +164,14 @@ export default function Dashboard() {
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
+      <Navbar />
+
       <div className="dashboard-header">
         <h1 className="dashboard-title">Prediction Analytics</h1>
         <p className="dashboard-subtitle">Visualize and analyze your crop disease predictions</p>
       </div>
       
-      <div className="navigation-bar">
-        <div className="nav-links">
-          <Link href="/">
-            <span className="nav-btn"><i className="nav-icon">🏠</i> Home</span>
-          </Link>
-          <Link href="/history">
-            <span className="nav-btn"><i className="nav-icon">📋</i> History</span>
-          </Link>
-          <Link href="/chatbot">
-            <span className="nav-btn"><i className="nav-icon">💬</i> Chatbot</span>
-          </Link>
-        </div>
+      <div className="dashboard-actions">
         <button 
           onClick={refreshDashboard} 
           className="refresh-btn"
@@ -319,43 +312,10 @@ export default function Dashboard() {
           font-size: 1.2rem;
         }
         
-        .navigation-bar {
+        .dashboard-actions {
           display: flex;
-          justify-content: space-between;
-          align-items: center;
+          justify-content: center;
           margin-bottom: 30px;
-          background: white;
-          border-radius: 12px;
-          padding: 15px 25px;
-          box-shadow: 0 2px 15px rgba(0, 0, 0, 0.05);
-        }
-        
-        .nav-links {
-          display: flex;
-          gap: 15px;
-        }
-        
-        .nav-btn {
-          padding: 10px 20px;
-          background: transparent;
-          color: #334155;
-          border-radius: 8px;
-          cursor: pointer;
-          font-size: 16px;
-          font-weight: 500;
-          transition: all 0.2s ease;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        
-        .nav-btn:hover {
-          background: #f1f5f9;
-          color: #3b82f6;
-        }
-        
-        .nav-icon {
-          font-size: 18px;
         }
         
         .refresh-btn {
@@ -656,16 +616,6 @@ export default function Dashboard() {
         }
         
         @media (max-width: 768px) {
-          .navigation-bar {
-            flex-direction: column;
-            gap: 15px;
-          }
-          
-          .nav-links {
-            width: 100%;
-            justify-content: space-between;
-          }
-          
           .refresh-btn {
             width: 100%;
             justify-content: center;
@@ -691,4 +641,6 @@ export default function Dashboard() {
       `}</style>
     </div>
   );
-} 
+}
+
+export default withAuth(Dashboard); 

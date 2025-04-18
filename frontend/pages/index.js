@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import axios from 'axios';
 import TreatmentDetails from '../components/TreatmentDetails';
+import Navbar from '../components/Navbar';
+import { useAuth } from '../utils/AuthContext';
+import { useRouter } from 'next/router';
 
 export default function Home() {
   const [showChatbot, setShowChatbot] = useState(false);
@@ -12,6 +15,18 @@ export default function Home() {
   const [prediction, setPrediction] = useState(null);
   const [error, setError] = useState(null);
   const [userId, setUserId] = useState('');
+  const [showLanguageModal, setShowLanguageModal] = useState(false);
+  const { user } = useAuth();
+  const router = useRouter();
+  const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
+
+  // Check if user is authenticated
+  useEffect(() => {
+    if (!user) {
+      router.push('/login');
+    }
+  }, [user, router]);
 
   // Initialize or load user ID from localStorage
   useEffect(() => {
@@ -29,9 +44,20 @@ export default function Home() {
     console.log(`Using User ID: ${storedUserId}`);
   }, []);
 
-  // Handle file selection
+  // Handle file selection from file picker
   const handleFileChange = (e) => {
     const file = e.target.files[0];
+    processSelectedFile(file);
+  };
+
+  // Handle image capture from camera
+  const handleCameraCapture = (e) => {
+    const file = e.target.files[0];
+    processSelectedFile(file);
+  };
+
+  // Process a selected file from either source
+  const processSelectedFile = (file) => {
     if (file) {
       setSelectedFile(file);
       setImagePreview(URL.createObjectURL(file));
@@ -80,16 +106,28 @@ export default function Home() {
     }
   };
 
+  // If not authenticated, don't render the main content
+  if (!user) {
+    return null;
+  }
+
   return (
     <div className="container">
       <Head>
-        <title>Crop Vision - Plant Disease Detection</title>
+        <title>Crop Disease Detection</title>
         <meta name="description" content="Plant disease detection using AI" />
       </Head>
 
+      <Navbar />
+      
+      {/* Very prominent Google Translate box */}
+      <div className="translate-box">
+        <div id="google_translate_element"></div>
+      </div>
+
       <main className="main">
         <h1 className="title">
-          Welcome to <span>Crop Vision</span>
+          <span className="crop-text">Crop</span> Disease Detection
         </h1>
 
         <p className="description">
@@ -102,8 +140,51 @@ export default function Home() {
             <p>
               Upload an image of your plant to detect diseases and get recommendations.
             </p>
-            <input type="file" accept="image/*" className="file-input" onChange={handleFileChange} />
-            <button className="upload-button" onClick={handleAnalyze} disabled={isLoading}>
+            
+            <div className="upload-options">
+              <div className="upload-button-container">
+                <button 
+                  onClick={() => fileInputRef.current.click()} 
+                  className="upload-option-button"
+                >
+                  <span className="upload-icon">📁</span>
+                  Browse Files
+                </button>
+                <input 
+                  ref={fileInputRef}
+                  type="file" 
+                  accept="image/*"
+                  className="file-input" 
+                  onChange={handleFileChange} 
+                  style={{ display: 'none' }}
+                />
+              </div>
+              
+              <div className="upload-button-container">
+                <button 
+                  onClick={() => cameraInputRef.current.click()} 
+                  className="upload-option-button camera-button"
+                >
+                  <span className="upload-icon">📷</span>
+                  Take Photo
+                </button>
+                <input 
+                  ref={cameraInputRef}
+                  type="file" 
+                  accept="image/*" 
+                  capture="environment"
+                  className="file-input" 
+                  onChange={handleCameraCapture} 
+                  style={{ display: 'none' }}
+                />
+              </div>
+            </div>
+            
+            <button 
+              className="analyze-button" 
+              onClick={handleAnalyze} 
+              disabled={isLoading || !selectedFile}
+            >
               {isLoading ? 'Analyzing...' : 'Analyze Plant'}
             </button>
             
@@ -204,6 +285,16 @@ export default function Home() {
       </footer>
 
       <style jsx>{`
+        .translate-box {
+          width: 350px;
+          margin: 20px auto;
+          padding: 20px;
+          background-color: #f5f5f5;
+          border: 2px solid #3c9f6b;
+          border-radius: 8px;
+          text-align: center;
+        }
+
         .container {
           min-height: 100vh;
           padding: 0 0.5rem;
@@ -215,7 +306,7 @@ export default function Home() {
         }
 
         .main {
-          padding: 5rem 0;
+          padding: 3rem 0;
           flex: 1;
           display: flex;
           flex-direction: column;
@@ -240,8 +331,9 @@ export default function Home() {
           text-align: center;
         }
 
-        .title span {
-          color: #0070f3;
+        .crop-text {
+          color: #3c9f6b;
+          font-weight: bold;
         }
 
         .description {
@@ -297,12 +389,53 @@ export default function Home() {
           flex-direction: column;
         }
 
-        .file-input {
+        .upload-options {
+          display: flex;
+          gap: 15px;
           margin: 1rem 0;
-          padding: 0.5rem;
+          flex-wrap: wrap;
         }
 
-        .upload-button {
+        .upload-button-container {
+          flex-grow: 1;
+          min-width: 150px;
+        }
+
+        .upload-option-button {
+          background-color: #f8f9fa;
+          color: #333;
+          border: 1px solid #ddd;
+          width: 100%;
+          padding: 0.75rem;
+          border-radius: 5px;
+          cursor: pointer;
+          font-size: 1rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          transition: all 0.2s;
+        }
+
+        .upload-option-button:hover {
+          background-color: #e9ecef;
+          border-color: #ced4da;
+        }
+
+        .camera-button {
+          background-color: #e6f4ea;
+          border-color: #a8dab5;
+        }
+
+        .camera-button:hover {
+          background-color: #d4eadb;
+        }
+
+        .upload-icon {
+          font-size: 1.2rem;
+        }
+
+        .analyze-button {
           background-color: #0070f3;
           color: white;
           border: none;
@@ -314,11 +447,11 @@ export default function Home() {
           transition: background-color 0.2s;
         }
 
-        .upload-button:hover:not(:disabled) {
+        .analyze-button:hover:not(:disabled) {
           background-color: #0051a8;
         }
         
-        .upload-button:disabled {
+        .analyze-button:disabled {
           background-color: #cccccc;
           cursor: not-allowed;
         }
@@ -326,7 +459,7 @@ export default function Home() {
         .image-preview {
           margin-top: 1rem;
           width: 100%;
-          max-height: 200px;
+          max-height: 300px;
           overflow: hidden;
           border-radius: 5px;
           border: 1px solid #eaeaea;
